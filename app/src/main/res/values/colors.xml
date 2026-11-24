@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="icon_bg">#FFFFFF</color>
+    <color name="bg_obsidian">#070D19</color>
+    <color name="bg_surface">#0F1A2E</color>
+    <color name="bg_glass">#1A2842</color>
+    <color name="glass_stroke">#334E7A</color>
+    <color name="cyan_accent">#00E5FF</color>
+    <color name="blue_accent">#4E7BFF</color>
+    <color name="purple_accent">#7B61FF</color>
+    <color name="text_primary">#F4F8FF</color>
+    <color name="text_secondary">#94A8C9</color>
+    <color name="danger_red">#FF5C72</color>
+    <color name="success_green">#2EE59D</color>
+</resources>

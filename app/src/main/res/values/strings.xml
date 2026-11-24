@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="launcher_name">V-Watermark</string>
+    <string name="app_title">Vision Watermark</string>
+    <string name="app_subtitle">Instant Offline Watermark Remover</string>
+    <string name="select_video_title">Select Video</string>
+    <string name="select_video_sub">from Gallery</string>
+    <string name="recent_exports">Recent Exports</string>
+    <string name="no_exports_yet">No exported videos yet.\nSelect a video above to remove watermarks instantly.</string>
+    <string name="add_box">+ Add Box</string>
+    <string name="delete_box">Remove Box</string>
+    <string name="time_range">Time Range</string>
+    <string name="mode_smart_erase">Smart Erase</string>
+    <string name="mode_blur">Blur</string>
+    <string name="mode_crop">Crop</string>
+    <string name="remove_watermark">Remove Watermark</string>
+    <string name="processing_status">Removing watermark offline…</string>
+    <string name="cancel">Cancel</string>
+    <string name="saved_to_gallery">Saved to Gallery</string>
+    <string name="play">Play</string>
+    <string name="share">Share</string>
+    <string name="done">Done</string>
+</resources>
