@@ -36,7 +36,9 @@ class EditorActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_VIDEO_URI = "extra_video_uri"
-        private const val MAX_BOXES = 5
+        const val EXTRA_INITIAL_MODE = "extra_initial_mode"
+        const val EXTRA_QUICK_TOOL = "extra_quick_tool"
+        private const val MAX_BOXES = 3
     }
 
     private lateinit var binding: ActivityEditorBinding
@@ -47,6 +49,7 @@ class EditorActivity : AppCompatActivity() {
     private var videoHeight = 720
     private var videoDurationMs = 10_000L
     private var currentMode = RemovalMode.SMART_ERASE
+    private var quickTool: String? = null
     private var savedOutputUri: Uri? = null
     private var isSeeking = false
 
@@ -79,9 +82,22 @@ class EditorActivity : AppCompatActivity() {
             return
         }
         videoUri = Uri.parse(uriStr)
+        quickTool = intent.getStringExtra(EXTRA_QUICK_TOOL)
 
         setupControls()
+
+        when (intent.getStringExtra(EXTRA_INITIAL_MODE)) {
+            "BLUR" -> selectMode(RemovalMode.BLUR)
+            "CROP" -> selectMode(RemovalMode.CROP)
+            else -> selectMode(RemovalMode.SMART_ERASE)
+        }
+
         loadVideoMetadataAndPlayer()
+
+        if (quickTool != null) {
+            // Auto-trigger quick tool (Flip or Compress) immediately after metadata loads
+            binding.tvEditorHeader.text = if (quickTool == "FLIP") "Flip Video" else "Compress Video"
+        }
     }
 
     private fun setupControls() {
@@ -141,15 +157,25 @@ class EditorActivity : AppCompatActivity() {
 
         binding.btnAddArea.setOnClickListener {
             if (currentMode == RemovalMode.CROP) {
-                Toast.makeText(this, "Crop mode uses a single frame", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Crop mode uses 1 frame", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             if (binding.watermarkOverlay.getBoxes().size >= MAX_BOXES) {
-                Toast.makeText(this, "Maximum $MAX_BOXES areas supported", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Maximum $MAX_BOXES areas allowed", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             val start = (player?.currentPosition ?: 0L)
             binding.watermarkOverlay.addDefaultBox(startMs = start, endMs = videoDurationMs)
+        }
+
+        binding.btnUndo.setOnClickListener {
+            if (!binding.watermarkOverlay.undo()) {
+                Toast.makeText(this, "Nothing to undo", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        binding.btnDeleteBox.setOnClickListener {
+            binding.watermarkOverlay.removeBoxAt(binding.watermarkOverlay.selectedBoxIndex)
         }
 
         binding.chipSmartErase.setOnClickListener { selectMode(RemovalMode.SMART_ERASE) }
@@ -199,7 +225,7 @@ class EditorActivity : AppCompatActivity() {
         val boxes = binding.watermarkOverlay.getBoxes()
         val selected = binding.watermarkOverlay.selectedBoxIndex
 
-        binding.tvAreaCount.text = "${boxes.size} / $MAX_BOXES"
+        binding.tvAreaCount.text = "${boxes.size}/$MAX_BOXES"
         binding.timelineView.setData(boxes, selected, videoDurationMs)
 
         val container = binding.areaChipsContainer
@@ -212,18 +238,18 @@ class EditorActivity : AppCompatActivity() {
             val chip = TextView(this).apply {
                 text = if (isSelected) {
                     val rangeStr = "${GalleryHelper.formatDuration(box.startMs)}–${GalleryHelper.formatDuration(end)}"
-                    if (boxes.size > 1) "#${idx + 1}  $rangeStr  ✕" else "#${idx + 1}  $rangeStr"
+                    if (boxes.size > 1) "#${idx + 1} $rangeStr ✕" else "#${idx + 1} $rangeStr"
                 } else {
                     "#${idx + 1}"
                 }
-                textSize = 12f
+                textSize = 11.5f
                 isSingleLine = true
                 gravity = Gravity.CENTER
                 setPadding(
-                    (12 * density).toInt(),
-                    (5 * density).toInt(),
-                    (12 * density).toInt(),
-                    (5 * density).toInt()
+                    (10 * density).toInt(),
+                    (4 * density).toInt(),
+                    (10 * density).toInt(),
+                    (4 * density).toInt()
                 )
                 setTextColor(if (isSelected) Color.parseColor("#04101D") else box.color)
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -243,7 +269,7 @@ class EditorActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     (32 * density).toInt()
                 ).apply {
-                    marginEnd = (8 * density).toInt()
+                    marginEnd = (6 * density).toInt()
                 }
                 layoutParams = lp
 
@@ -293,7 +319,6 @@ class EditorActivity : AppCompatActivity() {
             binding.watermarkOverlay.setVideoDimensions(videoWidth, videoHeight)
             binding.watermarkOverlay.setVideoDuration(videoDurationMs)
 
-            // Extract filmstrip thumbnails asynchronously for smooth visual timeline
             extractFilmstripThumbnails()
 
             val exo = ExoPlayer.Builder(this@EditorActivity).build().apply {
@@ -379,7 +404,12 @@ class EditorActivity : AppCompatActivity() {
         binding.btnCancelProcess.visibility = View.VISIBLE
         binding.circularProgress.progress = 0
         binding.tvPercent.text = "0%"
-        binding.tvProcessStatus.text = getString(R.string.processing_status)
+        binding.tvProcessBrand.text = getString(R.string.app_title)
+        binding.tvProcessStatus.text = when (quickTool) {
+            "FLIP" -> "Flipping video…"
+            "COMPRESS" -> "Compressing video…"
+            else -> getString(R.string.removing_watermark)
+        }
 
         WatermarkProcessor.processVideo(
             context = this,
@@ -388,6 +418,7 @@ class EditorActivity : AppCompatActivity() {
             mode = currentMode,
             boxes = pixelBoxes,
             durationMs = videoDurationMs,
+            quickTool = quickTool,
             onProgress = { pct ->
                 runOnUiThread {
                     binding.circularProgress.progress = pct
@@ -405,7 +436,7 @@ class EditorActivity : AppCompatActivity() {
                         savedOutputUri = saved
                         binding.circularProgress.progress = 100
                         binding.tvPercent.text = "100%"
-                        binding.tvProcessStatus.text = "Watermark removed!"
+                        binding.tvProcessStatus.text = "Done! Saved to Gallery"
                         binding.btnCancelProcess.visibility = View.GONE
                         binding.resultCard.visibility = View.VISIBLE
                     }

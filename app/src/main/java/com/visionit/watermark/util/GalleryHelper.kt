@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -57,6 +58,43 @@ object GalleryHelper {
         }
     }
 
+    fun savePhotoToGallery(context: Context, bitmap: Bitmap, displayName: String): Uri? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                    put(
+                        MediaStore.Images.Media.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_PICTURES}/$EXPORT_FOLDER_NAME"
+                    )
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: return null
+                resolver.openOutputStream(uri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 96, out)
+                }
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                uri
+            } else {
+                val picDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                    EXPORT_FOLDER_NAME
+                )
+                if (!picDir.exists()) picDir.mkdirs()
+                val dest = File(picDir, displayName)
+                dest.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 96, it) }
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", dest)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun loadRecentExports(context: Context): List<ExportedVideoItem> {
         val items = mutableListOf<ExportedVideoItem>()
         val projection = arrayOf(
@@ -92,7 +130,7 @@ object GalleryHelper {
                 val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
 
                 var count = 0
-                while (cursor.moveToNext() && count < 20) {
+                while (cursor.moveToNext() && count < 30) {
                     val id = cursor.getLong(idCol)
                     val uri = ContentUris.withAppendedId(
                         MediaStore.Video.Media.EXTERNAL_CONTENT_URI,

@@ -14,10 +14,10 @@
         android:paddingTop="10dp"
         android:paddingBottom="10dp">
 
-        <!-- Pro Top Bar: Back | Title + Video Meta | Export CTA -->
+        <!-- Pro Top Bar -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="46dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -59,7 +59,7 @@
             <TextView
                 android:id="@+id/btnExport"
                 android:layout_width="wrap_content"
-                android:layout_height="38dp"
+                android:layout_height="36dp"
                 android:background="@drawable/bg_primary_gradient_btn"
                 android:clickable="true"
                 android:focusable="true"
@@ -123,12 +123,12 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Video Preview + Color-Coded Draggable Overlay -->
+        <!-- Video Preview + Ultra-Slim Resizable Watermark Overlay -->
         <FrameLayout
             android:id="@+id/videoContainer"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:layout_weight="1"
             android:background="#050810">
 
@@ -149,15 +149,15 @@
         <!-- Playback Bar -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:layout_marginTop="8dp"
+            android:layout_height="42dp"
+            android:layout_marginTop="6dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <ImageButton
                 android:id="@+id/btnPlayPause"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:background="@drawable/bg_primary_gradient_btn"
                 android:contentDescription="@string/play"
                 android:padding="7dp"
@@ -168,7 +168,7 @@
                 android:id="@+id/tvCurrentTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
+                android:layout_marginStart="8dp"
                 android:fontFamily="monospace"
                 android:text="00:00"
                 android:textColor="@color/text_primary"
@@ -179,7 +179,7 @@
                 android:id="@+id/seekBar"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginHorizontal="6dp"
+                android:layout_marginHorizontal="4dp"
                 android:layout_weight="1"
                 android:progressTint="@color/cyan_accent"
                 android:thumbTint="@color/cyan_accent" />
@@ -194,7 +194,7 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
-        <!-- Area Chips Row + Counter + Add Area -->
+        <!-- Area Chips Row + Undo + Delete + Counter (1/3) + Add Area -->
         <LinearLayout
             android:id="@+id/areaBarRow"
             android:layout_width="match_parent"
@@ -217,15 +217,35 @@
                     android:orientation="horizontal" />
             </HorizontalScrollView>
 
+            <ImageButton
+                android:id="@+id/btnUndo"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_circle_icon_btn"
+                android:contentDescription="Undo"
+                android:padding="7dp"
+                android:src="@drawable/ic_undo" />
+
+            <ImageButton
+                android:id="@+id/btnDeleteBox"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_circle_icon_btn"
+                android:contentDescription="Delete Box"
+                android:padding="7dp"
+                android:src="@drawable/ic_delete" />
+
             <TextView
                 android:id="@+id/tvAreaCount"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginHorizontal="8dp"
+                android:layout_marginHorizontal="6dp"
                 android:fontFamily="monospace"
-                android:text="1 / 5"
+                android:text="1/3"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/btnAddArea"
@@ -242,12 +262,12 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Interactive Multi-Track Filmstrip Timeline -->
+        <!-- Compact Multi-Track Filmstrip Timeline (optimized for up to 3 tracks) -->
         <FrameLayout
             android:id="@+id/timelineCard"
             android:layout_width="match_parent"
-            android:layout_height="172dp"
-            android:layout_marginTop="8dp"
+            android:layout_height="156dp"
+            android:layout_marginTop="6dp"
             android:background="@drawable/bg_glass_card"
             android:padding="6dp">
 
@@ -259,12 +279,12 @@
 
     </LinearLayout>
 
-    <!-- Fullscreen Dark-Glass Processing & Result Overlay -->
+    <!-- Fullscreen Dark-Glass Processing & Result Overlay (FIXED: Clean ring + status ABOVE Cancel!) -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/processingOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F0060C18"
+        android:background="#F2060C18"
         android:clickable="true"
         android:focusable="true"
         android:padding="24dp"
@@ -272,9 +292,9 @@
 
         <FrameLayout
             android:id="@+id/progressRingContainer"
-            android:layout_width="220dp"
-            android:layout_height="220dp"
-            app:layout_constraintBottom_toTopOf="@id/btnCancelProcess"
+            android:layout_width="210dp"
+            android:layout_height="210dp"
+            app:layout_constraintBottom_toTopOf="@id/tvProcessBrand"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
@@ -290,39 +310,50 @@
                 android:progress="0"
                 android:progressDrawable="@drawable/progress_ring_drawable" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="24dp">
-
-                <TextView
-                    android:id="@+id/tvPercent"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0%"
-                    android:textColor="@color/text_primary"
-                    android:textSize="40sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvProcessStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:gravity="center"
-                    android:text="@string/processing_status"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
-            </LinearLayout>
+            <TextView
+                android:id="@+id/tvPercent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="0%"
+                android:textColor="@color/text_primary"
+                android:textSize="44sp"
+                android:textStyle="bold" />
         </FrameLayout>
 
         <TextView
+            android:id="@+id/tvProcessBrand"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/app_title"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toTopOf="@id/tvProcessStatus"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/progressRingContainer" />
+
+        <TextView
+            android:id="@+id/tvProcessStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:text="@string/removing_watermark"
+            android:textColor="@color/cyan_accent"
+            android:textSize="14sp"
+            app:layout_constraintBottom_toTopOf="@id/btnCancelProcess"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvProcessBrand" />
+
+        <TextView
             android:id="@+id/btnCancelProcess"
-            android:layout_width="136dp"
+            android:layout_width="140dp"
             android:layout_height="44dp"
-            android:layout_marginTop="28dp"
+            android:layout_marginTop="24dp"
             android:background="@drawable/bg_pill_button"
             android:clickable="true"
             android:focusable="true"
@@ -334,7 +365,7 @@
             app:layout_constraintBottom_toTopOf="@id/resultCard"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/progressRingContainer" />
+            app:layout_constraintTop_toBottomOf="@id/tvProcessStatus" />
 
         <LinearLayout
             android:id="@+id/resultCard"

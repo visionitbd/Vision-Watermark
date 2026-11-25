@@ -27,10 +27,10 @@ object WatermarkProcessor {
         mode: RemovalMode,
         boxes: List<WatermarkOverlayView.PixelBox>,
         durationMs: Long,
+        quickTool: String? = null,
         onProgress: (Int) -> Unit,
         onComplete: (Boolean, String?) -> Unit
     ) {
-        // Use FFmpegKit SAF parameter directly so there is ZERO delay copying large videos!
         val inputPath = try {
             FFmpegKitConfig.getSafParameterForRead(context, inputUri)
         } catch (e: Exception) {
@@ -42,7 +42,11 @@ object WatermarkProcessor {
             return
         }
 
-        val commandArgs = buildFfmpegArgs(inputPath, outputFile.absolutePath, mode, boxes)
+        val commandArgs = if (quickTool != null) {
+            buildQuickToolArgs(inputPath, outputFile.absolutePath, quickTool)
+        } else {
+            buildFfmpegArgs(inputPath, outputFile.absolutePath, mode, boxes)
+        }
 
         activeSession = FFmpegKit.executeWithArgumentsAsync(
             commandArgs,
@@ -75,6 +79,32 @@ object WatermarkProcessor {
         )
     }
 
+    private fun buildQuickToolArgs(
+        inputPath: String,
+        outputPath: String,
+        tool: String
+    ): Array<String> {
+        return when (tool) {
+            "FLIP" -> arrayOf(
+                "-y", "-i", inputPath,
+                "-vf", "hflip",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+                outputPath
+            )
+            "COMPRESS" -> arrayOf(
+                "-y", "-i", inputPath,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+                outputPath
+            )
+            else -> arrayOf(
+                "-y", "-i", inputPath,
+                "-c", "copy", outputPath
+            )
+        }
+    }
+
     private fun buildFfmpegArgs(
         inputPath: String,
         outputPath: String,
@@ -96,7 +126,6 @@ object WatermarkProcessor {
             }
 
             RemovalMode.BLUR -> {
-                // Build filter_complex that blurs each watermark box smoothly and overlays it back
                 val sb = StringBuilder()
                 var currentLabel = "[0:v]"
                 boxes.forEachIndexed { idx, b ->
@@ -121,14 +150,12 @@ object WatermarkProcessor {
 
             RemovalMode.CROP -> {
                 val b = boxes.first()
-                // Ensure even width/height for libx264 yuv420p
                 val evenW = (b.w / 2) * 2
                 val evenH = (b.h / 2) * 2
                 args += listOf("-vf", "crop=$evenW:$evenH:${b.x}:${b.y},scale=trunc(iw/2)*2:trunc(ih/2)*2")
             }
         }
 
-        // Fast, high-quality, universally compatible MP4 encoding with instant audio copy
         args += listOf(
             "-c:v", "libx264",
             "-preset", "ultrafast",

@@ -23,6 +23,7 @@ class WatermarkOverlayView @JvmOverloads constructor(
 
     private val videoRect = RectF()
     private val boxes = mutableListOf<WatermarkBox>()
+    private val undoStack = ArrayDeque<Pair<List<WatermarkBox>, Int>>()
     private var nextId = 1
     private var totalDurationMs = 10_000L
     private var currentPlayheadMs = 0L
@@ -34,6 +35,7 @@ class WatermarkOverlayView @JvmOverloads constructor(
         set(value) {
             field = value
             if (value == RemovalMode.CROP && boxes.size > 1) {
+                pushUndoSnapshot()
                 val active = getSelectedBox()
                 boxes.clear()
                 if (active != null) boxes.add(active)
@@ -57,19 +59,22 @@ class WatermarkOverlayView @JvmOverloads constructor(
     private var videoWidth = 16
     private var videoHeight = 9
 
-    private enum class DragMode { NONE, MOVE, TL, TR, BL, BR }
+    private enum class DragMode { NONE, MOVE, TL, TR, BL, BR, TOP, BOTTOM, LEFT, RIGHT }
     private var dragMode = DragMode.NONE
     private var lastTouchX = 0f
     private var lastTouchY = 0f
-    private val handleHitRadius = 56f
-    private val minNormSize = 0.06f
+    private val cornerHitRadius = 46f
+    private val edgeHitRadius = 30f
+    // Allow ultra-slim horizontal/vertical boxes for tiny text watermarks
+    private val minNormW = 0.03f
+    private val minNormH = 0.015f
 
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 6f
+        strokeWidth = 4f
     }
 
-    private val inactiveDashEffect = DashPathEffect(floatArrayOf(14f, 10f), 0f)
+    private val inactiveDashEffect = DashPathEffect(floatArrayOf(12f, 8f), 0f)
 
     private val boxFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -95,12 +100,30 @@ class WatermarkOverlayView @JvmOverloads constructor(
 
     private val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#04101D")
-        textSize = 26f
+        textSize = 22f
         isFakeBoldText = true
     }
 
     init {
-        addDefaultBox(0L, 10_000L)
+        addDefaultBox(0L, 10_000L, recordUndo = false)
+    }
+
+    private fun pushUndoSnapshot() {
+        val copy = boxes.map { it.copy() }
+        if (undoStack.size >= 25) undoStack.removeFirst()
+        undoStack.addLast(copy to selectedBoxIndex)
+    }
+
+    fun undo(): Boolean {
+        if (undoStack.isEmpty()) return false
+        val (prevBoxes, prevSelected) = undoStack.removeLast()
+        boxes.clear()
+        boxes.addAll(prevBoxes.map { it.copy() })
+        selectedBoxIndex = prevSelected.coerceIn(0, (boxes.size - 1).coerceAtLeast(0))
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        onBoxesChanged?.invoke()
+        invalidate()
+        return true
     }
 
     fun setVideoDuration(durationMs: Long) {
@@ -140,17 +163,22 @@ class WatermarkOverlayView @JvmOverloads constructor(
         }
     }
 
-    fun addDefaultBox(startMs: Long = currentPlayheadMs, endMs: Long = totalDurationMs) {
+    fun addDefaultBox(
+        startMs: Long = currentPlayheadMs,
+        endMs: Long = totalDurationMs,
+        recordUndo: Boolean = true
+    ) {
+        if (recordUndo) pushUndoSnapshot()
         val color = BoxColors.colorForIndex(nextId - 1)
-        val offset = (boxes.size % 4) * 0.06f
+        val offset = (boxes.size % 3) * 0.08f
         val safeStart = startMs.coerceIn(0L, max(0L, totalDurationMs - 500L))
         val safeEnd = if (endMs > safeStart + 300L) endMs.coerceAtMost(totalDurationMs) else totalDurationMs
         val box = WatermarkBox(
             id = nextId++,
-            left = (0.55f - offset).coerceIn(0.08f, 0.62f),
-            top = (0.68f - offset).coerceIn(0.08f, 0.72f),
-            right = (0.90f - offset).coerceIn(0.32f, 0.94f),
-            bottom = (0.84f - offset).coerceIn(0.25f, 0.92f),
+            left = (0.56f - offset).coerceIn(0.08f, 0.65f),
+            top = (0.76f - offset).coerceIn(0.10f, 0.82f),
+            right = (0.92f - offset).coerceIn(0.32f, 0.94f),
+            bottom = (0.84f - offset).coerceIn(0.16f, 0.92f),
             color = color,
             startMs = safeStart,
             endMs = safeEnd
@@ -163,9 +191,24 @@ class WatermarkOverlayView @JvmOverloads constructor(
     }
 
     fun removeBoxAt(index: Int): Boolean {
-        if (boxes.size <= 1 || index !in boxes.indices) return false
+        if (index !in boxes.indices) return false
+        pushUndoSnapshot()
+        if (boxes.size <= 1) {
+            // Reset single box cleanly to default slim position
+            val b = boxes[0]
+            b.left = 0.56f
+            b.top = 0.76f
+            b.right = 0.92f
+            b.bottom = 0.84f
+            b.startMs = 0L
+            b.endMs = totalDurationMs
+            onBoxesChanged?.invoke()
+            invalidate()
+            return true
+        }
         boxes.removeAt(index)
         selectedBoxIndex = selectedBoxIndex.coerceIn(0, boxes.lastIndex)
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         onBoxesChanged?.invoke()
         invalidate()
         return true
@@ -230,21 +273,20 @@ class WatermarkOverlayView @JvmOverloads constructor(
             val isSelected = index == selectedBoxIndex
             val isActiveNow = isBoxActiveAtPlayhead(box)
 
-            // Selected box is always editable; non-selected outside time window is faint
             val alphaFactor = when {
                 isSelected && isActiveNow -> 255
-                isSelected -> 170
+                isSelected -> 175
                 isActiveNow -> 200
                 else -> 65
             }
 
             if (mode != RemovalMode.CROP) {
-                boxFillPaint.color = Color.argb((alphaFactor * 0.16f).toInt(), Color.red(box.color), Color.green(box.color), Color.blue(box.color))
+                boxFillPaint.color = Color.argb((alphaFactor * 0.14f).toInt(), Color.red(box.color), Color.green(box.color), Color.blue(box.color))
                 canvas.drawRect(r, boxFillPaint)
             }
 
             borderPaint.color = Color.argb(alphaFactor, Color.red(box.color), Color.green(box.color), Color.blue(box.color))
-            borderPaint.strokeWidth = if (isSelected) 6f else 4f
+            borderPaint.strokeWidth = if (isSelected) 4.2f else 3f
             borderPaint.pathEffect = if (isActiveNow) null else inactiveDashEffect
             canvas.drawRect(r, borderPaint)
 
@@ -258,20 +300,21 @@ class WatermarkOverlayView @JvmOverloads constructor(
 
             if (mode != RemovalMode.CROP) {
                 val label = "#${index + 1}"
-                val badgeW = 52f
-                val badgeH = 32f
+                val badgeW = 42f
+                val badgeH = 26f
                 val bx = r.left
                 val by = (r.top - badgeH - 4f).coerceAtLeast(videoRect.top + 4f)
                 badgeBgPaint.color = Color.argb(alphaFactor, Color.red(box.color), Color.green(box.color), Color.blue(box.color))
-                canvas.drawRoundRect(bx, by, bx + badgeW, by + badgeH, 8f, 8f, badgeBgPaint)
-                canvas.drawText(label, bx + 11f, by + 23f, badgeTextPaint)
+                canvas.drawRoundRect(bx, by, bx + badgeW, by + badgeH, 7f, 7f, badgeBgPaint)
+                canvas.drawText(label, bx + 8f, by + 19f, badgeTextPaint)
             }
         }
     }
 
     private fun drawHandle(canvas: Canvas, cx: Float, cy: Float) {
-        canvas.drawRoundRect(cx - 13f, cy - 13f, cx + 13f, cy + 13f, 6f, 6f, handlePaint)
-        canvas.drawRoundRect(cx - 5f, cy - 5f, cx + 5f, cy + 5f, 3f, 3f, handleInnerPaint)
+        // Sleek compact handles that never obscure thin text watermarks
+        canvas.drawCircle(cx, cy, 8.5f, handlePaint)
+        canvas.drawCircle(cx, cy, 3.5f, handleInnerPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -288,8 +331,9 @@ class WatermarkOverlayView @JvmOverloads constructor(
                 val activeBox = getSelectedBox()
                 if (activeBox != null) {
                     val r = boxToScreenRect(activeBox)
-                    dragMode = hitTestHandle(x, y, r)
+                    dragMode = hitTestHandleOrEdge(x, y, r)
                     if (dragMode != DragMode.NONE) {
+                        pushUndoSnapshot()
                         parent?.requestDisallowInterceptTouchEvent(true)
                         return true
                     }
@@ -297,7 +341,9 @@ class WatermarkOverlayView @JvmOverloads constructor(
 
                 for (i in boxes.indices.reversed()) {
                     val r = boxToScreenRect(boxes[i])
-                    if (r.contains(x, y)) {
+                    val expanded = RectF(r.left - 14f, r.top - 14f, r.right + 14f, r.bottom + 14f)
+                    if (expanded.contains(x, y)) {
+                        pushUndoSnapshot()
                         selectedBoxIndex = i
                         dragMode = DragMode.MOVE
                         onBoxesChanged?.invoke()
@@ -330,20 +376,32 @@ class WatermarkOverlayView @JvmOverloads constructor(
                         box.bottom = newT + h
                     }
                     DragMode.TL -> {
-                        box.left = (box.left + dx).coerceIn(0f, box.right - minNormSize)
-                        box.top = (box.top + dy).coerceIn(0f, box.bottom - minNormSize)
+                        box.left = (box.left + dx).coerceIn(0f, box.right - minNormW)
+                        box.top = (box.top + dy).coerceIn(0f, box.bottom - minNormH)
                     }
                     DragMode.TR -> {
-                        box.right = (box.right + dx).coerceIn(box.left + minNormSize, 1f)
-                        box.top = (box.top + dy).coerceIn(0f, box.bottom - minNormSize)
+                        box.right = (box.right + dx).coerceIn(box.left + minNormW, 1f)
+                        box.top = (box.top + dy).coerceIn(0f, box.bottom - minNormH)
                     }
                     DragMode.BL -> {
-                        box.left = (box.left + dx).coerceIn(0f, box.right - minNormSize)
-                        box.bottom = (box.bottom + dy).coerceIn(box.top + minNormSize, 1f)
+                        box.left = (box.left + dx).coerceIn(0f, box.right - minNormW)
+                        box.bottom = (box.bottom + dy).coerceIn(box.top + minNormH, 1f)
                     }
                     DragMode.BR -> {
-                        box.right = (box.right + dx).coerceIn(box.left + minNormSize, 1f)
-                        box.bottom = (box.bottom + dy).coerceIn(box.top + minNormSize, 1f)
+                        box.right = (box.right + dx).coerceIn(box.left + minNormW, 1f)
+                        box.bottom = (box.bottom + dy).coerceIn(box.top + minNormH, 1f)
+                    }
+                    DragMode.TOP -> {
+                        box.top = (box.top + dy).coerceIn(0f, box.bottom - minNormH)
+                    }
+                    DragMode.BOTTOM -> {
+                        box.bottom = (box.bottom + dy).coerceIn(box.top + minNormH, 1f)
+                    }
+                    DragMode.LEFT -> {
+                        box.left = (box.left + dx).coerceIn(0f, box.right - minNormW)
+                    }
+                    DragMode.RIGHT -> {
+                        box.right = (box.right + dx).coerceIn(box.left + minNormW, 1f)
                     }
                     DragMode.NONE -> Unit
                 }
@@ -360,14 +418,20 @@ class WatermarkOverlayView @JvmOverloads constructor(
         return super.onTouchEvent(event)
     }
 
-    private fun hitTestHandle(x: Float, y: Float, r: RectF): DragMode {
-        return when {
-            abs(x - r.left) <= handleHitRadius && abs(y - r.top) <= handleHitRadius -> DragMode.TL
-            abs(x - r.right) <= handleHitRadius && abs(y - r.top) <= handleHitRadius -> DragMode.TR
-            abs(x - r.left) <= handleHitRadius && abs(y - r.bottom) <= handleHitRadius -> DragMode.BL
-            abs(x - r.right) <= handleHitRadius && abs(y - r.bottom) <= handleHitRadius -> DragMode.BR
-            else -> DragMode.NONE
-        }
+    private fun hitTestHandleOrEdge(x: Float, y: Float, r: RectF): DragMode {
+        // Corners first
+        if (abs(x - r.left) <= cornerHitRadius && abs(y - r.top) <= cornerHitRadius) return DragMode.TL
+        if (abs(x - r.right) <= cornerHitRadius && abs(y - r.top) <= cornerHitRadius) return DragMode.TR
+        if (abs(x - r.left) <= cornerHitRadius && abs(y - r.bottom) <= cornerHitRadius) return DragMode.BL
+        if (abs(x - r.right) <= cornerHitRadius && abs(y - r.bottom) <= cornerHitRadius) return DragMode.BR
+
+        // Edges for effortless thin vertical/horizontal adjustment
+        if (x in r.left..r.right && abs(y - r.top) <= edgeHitRadius) return DragMode.TOP
+        if (x in r.left..r.right && abs(y - r.bottom) <= edgeHitRadius) return DragMode.BOTTOM
+        if (y in r.top..r.bottom && abs(x - r.left) <= edgeHitRadius) return DragMode.LEFT
+        if (y in r.top..r.bottom && abs(x - r.right) <= edgeHitRadius) return DragMode.RIGHT
+
+        return DragMode.NONE
     }
 
     fun computePixelBoxes(actualVideoW: Int, actualVideoH: Int): List<PixelBox> {
@@ -377,10 +441,10 @@ class WatermarkOverlayView @JvmOverloads constructor(
             val rawW = ((b.right - b.left) * actualVideoW).toInt()
             val rawH = ((b.bottom - b.top) * actualVideoH).toInt()
 
-            val safeX = rawX.coerceIn(2, max(2, actualVideoW - 12))
-            val safeY = rawY.coerceIn(2, max(2, actualVideoH - 12))
-            val safeW = rawW.coerceIn(8, max(8, actualVideoW - safeX - 2))
-            val safeH = rawH.coerceIn(8, max(8, actualVideoH - safeY - 2))
+            val safeX = rawX.coerceIn(2, max(2, actualVideoW - 10))
+            val safeY = rawY.coerceIn(2, max(2, actualVideoH - 10))
+            val safeW = rawW.coerceIn(6, max(6, actualVideoW - safeX - 2))
+            val safeH = rawH.coerceIn(6, max(6, actualVideoH - safeY - 2))
 
             val fullEnd = if (b.endMs > 0L) b.endMs else totalDurationMs
             val isFullVideo = b.startMs <= 100L && fullEnd >= totalDurationMs - 150L

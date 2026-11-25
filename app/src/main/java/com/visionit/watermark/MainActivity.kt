@@ -22,6 +22,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: RecentExportsAdapter
+    private var pendingEditorMode: String = "SMART_ERASE"
+    private var pendingQuickTool: String? = null
 
     private val pickVideoLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -36,13 +38,36 @@ class MainActivity : AppCompatActivity() {
             }
             val intent = Intent(this, EditorActivity::class.java).apply {
                 putExtra(EditorActivity.EXTRA_VIDEO_URI, uri.toString())
+                putExtra(EditorActivity.EXTRA_INITIAL_MODE, pendingEditorMode)
+                if (pendingQuickTool != null) {
+                    putExtra(EditorActivity.EXTRA_QUICK_TOOL, pendingQuickTool)
+                }
+            }
+            pendingQuickTool = null
+            startActivity(intent)
+        }
+    }
+
+    private val pickPhotoLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: SecurityException) {
+            }
+            val intent = Intent(this, PhotoEditorActivity::class.java).apply {
+                putExtra(PhotoEditorActivity.EXTRA_PHOTO_URI, uri.toString())
             }
             startActivity(intent)
         }
     }
 
     private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
+        ActivityResultContracts.RequestMultiplePermissions()
     ) {
         refreshRecentExports()
     }
@@ -61,11 +86,45 @@ class MainActivity : AppCompatActivity() {
         binding.rvRecentExports.layoutManager = LinearLayoutManager(this)
         binding.rvRecentExports.adapter = adapter
 
-        binding.btnSelectVideo.setOnClickListener {
-            pickVideoLauncher.launch(arrayOf("video/*"))
-        }
+        // Hero buttons
+        binding.btnChooseVideo.setOnClickListener { openVideoPicker("SMART_ERASE", null) }
+        binding.btnChoosePhoto.setOnClickListener { pickPhotoLauncher.launch(arrayOf("image/*")) }
 
-        requestGalleryPermissionIfNeeded()
+        // All Tools grid
+        binding.toolWatermark.setOnClickListener { openVideoPicker("SMART_ERASE", null) }
+        binding.toolPhotoErase.setOnClickListener { pickPhotoLauncher.launch(arrayOf("image/*")) }
+        binding.toolCrop.setOnClickListener { openVideoPicker("CROP", null) }
+        binding.toolBlur.setOnClickListener { openVideoPicker("BLUR", null) }
+        binding.toolFlip.setOnClickListener { openVideoPicker("SMART_ERASE", "FLIP") }
+        binding.toolCompress.setOnClickListener { openVideoPicker("SMART_ERASE", "COMPRESS") }
+
+        // Quick banner & bottom navigation
+        binding.quickRecentBanner.setOnClickListener { switchTab(showHome = false) }
+        binding.navHome.setOnClickListener { switchTab(showHome = true) }
+        binding.navVideos.setOnClickListener { switchTab(showHome = false) }
+
+        requestGalleryPermissionsIfNeeded()
+    }
+
+    private fun openVideoPicker(initialMode: String, quickTool: String?) {
+        pendingEditorMode = initialMode
+        pendingQuickTool = quickTool
+        pickVideoLauncher.launch(arrayOf("video/*"))
+    }
+
+    private fun switchTab(showHome: Boolean) {
+        binding.homeTabContainer.visibility = if (showHome) View.VISIBLE else View.GONE
+        binding.videosTabContainer.visibility = if (showHome) View.GONE else View.VISIBLE
+
+        val activeColor = ContextCompat.getColor(this, R.color.cyan_accent)
+        val inactiveColor = ContextCompat.getColor(this, R.color.text_secondary)
+
+        binding.ivNavHome.setColorFilter(if (showHome) activeColor else inactiveColor)
+        binding.tvNavHome.setTextColor(if (showHome) activeColor else inactiveColor)
+        binding.ivNavVideos.setColorFilter(if (!showHome) activeColor else inactiveColor)
+        binding.tvNavVideos.setTextColor(if (!showHome) activeColor else inactiveColor)
+
+        if (!showHome) refreshRecentExports()
     }
 
     override fun onResume() {
@@ -73,14 +132,17 @@ class MainActivity : AppCompatActivity() {
         refreshRecentExports()
     }
 
-    private fun requestGalleryPermissionIfNeeded() {
-        val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_VIDEO
+    private fun requestGalleryPermissionsIfNeeded() {
+        val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_IMAGES)
         } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
-            permissionLauncher.launch(perm)
+        val missing = perms.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            permissionLauncher.launch(missing.toTypedArray())
         }
     }
 
@@ -92,6 +154,11 @@ class MainActivity : AppCompatActivity() {
             adapter.submitList(exports)
             binding.tvEmptyExports.visibility = if (exports.isEmpty()) View.VISIBLE else View.GONE
             binding.rvRecentExports.visibility = if (exports.isEmpty()) View.GONE else View.VISIBLE
+            binding.tvExportSummary.text = if (exports.isEmpty()) {
+                "View & share your cleaned videos"
+            } else {
+                "${exports.size} saved video${if (exports.size > 1) "s" else ""} ready to play or share"
+            }
         }
     }
 }
