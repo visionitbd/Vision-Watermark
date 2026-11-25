@@ -1,13 +1,18 @@
 package com.visionit.watermark
 
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
 import android.view.View
+import android.widget.LinearLayout
 import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -31,6 +36,7 @@ class EditorActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_VIDEO_URI = "extra_video_uri"
+        private const val MAX_BOXES = 5
     }
 
     private lateinit var binding: ActivityEditorBinding
@@ -39,7 +45,7 @@ class EditorActivity : AppCompatActivity() {
 
     private var videoWidth = 1280
     private var videoHeight = 720
-    private var videoDurationMs = 0L
+    private var videoDurationMs = 10_000L
     private var currentMode = RemovalMode.SMART_ERASE
     private var savedOutputUri: Uri? = null
     private var isSeeking = false
@@ -53,10 +59,12 @@ class EditorActivity : AppCompatActivity() {
                 val dur = p.duration
                 binding.seekBar.max = dur.toInt()
                 binding.seekBar.progress = pos.toInt()
-                binding.tvTime.text =
-                    "${GalleryHelper.formatDuration(pos)} / ${GalleryHelper.formatDuration(dur)}"
+                binding.tvCurrentTime.text = GalleryHelper.formatDuration(pos)
+                binding.tvTotalTime.text = "/ ${GalleryHelper.formatDuration(dur)}"
+                binding.watermarkOverlay.setCurrentPlayhead(pos)
+                binding.timelineView.setPlayhead(pos)
             }
-            handler.postDelayed(this, 100)
+            handler.postDelayed(this, 60)
         }
     }
 
@@ -78,9 +86,26 @@ class EditorActivity : AppCompatActivity() {
 
     private fun setupControls() {
         binding.btnBack.setOnClickListener { finish() }
+        binding.btnExport.setOnClickListener { startWatermarkRemoval() }
 
-        binding.watermarkOverlay.onSelectionChanged = {
-            syncBoxControls()
+        binding.watermarkOverlay.onBoxesChanged = {
+            refreshAreaChipsAndTimeline()
+        }
+
+        binding.timelineView.onBoxSelected = { idx ->
+            binding.watermarkOverlay.selectBox(idx)
+        }
+
+        binding.timelineView.onRangeChanged = { _, _, _ ->
+            refreshAreaChipsAndTimeline()
+            binding.watermarkOverlay.invalidate()
+        }
+
+        binding.timelineView.onScrubTo = { targetMs ->
+            player?.seekTo(targetMs)
+            binding.seekBar.progress = targetMs.toInt()
+            binding.tvCurrentTime.text = GalleryHelper.formatDuration(targetMs)
+            binding.watermarkOverlay.setCurrentPlayhead(targetMs)
         }
 
         binding.btnPlayPause.setOnClickListener {
@@ -97,9 +122,11 @@ class EditorActivity : AppCompatActivity() {
         binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
-                    player?.seekTo(progress.toLong())
-                    binding.tvTime.text =
-                        "${GalleryHelper.formatDuration(progress.toLong())} / ${GalleryHelper.formatDuration(videoDurationMs)}"
+                    val pos = progress.toLong()
+                    player?.seekTo(pos)
+                    binding.tvCurrentTime.text = GalleryHelper.formatDuration(pos)
+                    binding.watermarkOverlay.setCurrentPlayhead(pos)
+                    binding.timelineView.setPlayhead(pos)
                 }
             }
 
@@ -112,64 +139,22 @@ class EditorActivity : AppCompatActivity() {
             }
         })
 
-        binding.btnAddBox.setOnClickListener {
+        binding.btnAddArea.setOnClickListener {
             if (currentMode == RemovalMode.CROP) {
                 Toast.makeText(this, "Crop mode uses a single frame", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (binding.watermarkOverlay.getBoxes().size >= 5) {
-                Toast.makeText(this, "Maximum 5 watermark boxes supported", Toast.LENGTH_SHORT).show()
+            if (binding.watermarkOverlay.getBoxes().size >= MAX_BOXES) {
+                Toast.makeText(this, "Maximum $MAX_BOXES areas supported", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            binding.watermarkOverlay.addDefaultBox()
-        }
-
-        binding.btnRemoveBox.setOnClickListener {
-            if (!binding.watermarkOverlay.removeSelectedBox()) {
-                Toast.makeText(this, "At least 1 box is required", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        binding.switchTimeRange.setOnCheckedChangeListener { _, isChecked ->
-            val box = binding.watermarkOverlay.getSelectedBox() ?: return@setOnCheckedChangeListener
-            box.useTimeRange = isChecked
-            binding.timeRangePanel.visibility = if (isChecked) View.VISIBLE else View.GONE
-            syncTimeRangeButtons()
-        }
-
-        binding.btnSetStart.setOnClickListener {
-            val box = binding.watermarkOverlay.getSelectedBox() ?: return@setOnClickListener
-            val sec = (player?.currentPosition ?: 0L) / 1000f
-            box.startSec = sec
-            if (box.endSec > 0f && box.endSec <= box.startSec) {
-                box.endSec = -1f
-            }
-            syncTimeRangeButtons()
-        }
-
-        binding.btnSetEnd.setOnClickListener {
-            val box = binding.watermarkOverlay.getSelectedBox() ?: return@setOnClickListener
-            val sec = (player?.currentPosition ?: 0L) / 1000f
-            if (sec <= box.startSec) {
-                Toast.makeText(this, "End time must be after Start time", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            box.endSec = sec
-            syncTimeRangeButtons()
-        }
-
-        binding.btnResetRange.setOnClickListener {
-            val box = binding.watermarkOverlay.getSelectedBox() ?: return@setOnClickListener
-            box.startSec = 0f
-            box.endSec = -1f
-            syncTimeRangeButtons()
+            val start = (player?.currentPosition ?: 0L)
+            binding.watermarkOverlay.addDefaultBox(startMs = start, endMs = videoDurationMs)
         }
 
         binding.chipSmartErase.setOnClickListener { selectMode(RemovalMode.SMART_ERASE) }
         binding.chipBlur.setOnClickListener { selectMode(RemovalMode.BLUR) }
         binding.chipCrop.setOnClickListener { selectMode(RemovalMode.CROP) }
-
-        binding.btnRemoveWatermark.setOnClickListener { startWatermarkRemoval() }
 
         binding.btnCancelProcess.setOnClickListener {
             WatermarkProcessor.cancelCurrent()
@@ -188,14 +173,14 @@ class EditorActivity : AppCompatActivity() {
             finish()
         }
 
-        syncBoxControls()
+        refreshAreaChipsAndTimeline()
     }
 
     private fun selectMode(mode: RemovalMode) {
         currentMode = mode
         binding.watermarkOverlay.mode = mode
 
-        fun styleChip(view: android.widget.TextView, active: Boolean) {
+        fun styleChip(view: TextView, active: Boolean) {
             view.setBackgroundResource(if (active) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
             view.setTextColor(if (active) Color.parseColor("#04101D") else Color.parseColor("#F4F8FF"))
         }
@@ -205,31 +190,72 @@ class EditorActivity : AppCompatActivity() {
         styleChip(binding.chipCrop, mode == RemovalMode.CROP)
 
         val isCrop = mode == RemovalMode.CROP
-        binding.switchTimeRange.isEnabled = !isCrop
-        if (isCrop) {
-            binding.switchTimeRange.isChecked = false
-            binding.timeRangePanel.visibility = View.GONE
-        }
-        syncBoxControls()
+        binding.areaBarRow.visibility = if (isCrop) View.GONE else View.VISIBLE
+        binding.timelineCard.visibility = if (isCrop) View.GONE else View.VISIBLE
+        refreshAreaChipsAndTimeline()
     }
 
-    private fun syncBoxControls() {
-        val count = binding.watermarkOverlay.getBoxes().size
-        binding.tvBoxCount.text = if (currentMode == RemovalMode.CROP) "Crop Frame" else "$count Box${if (count > 1) "es" else ""}"
-        val box = binding.watermarkOverlay.getSelectedBox() ?: return
-        binding.switchTimeRange.isChecked = box.useTimeRange && currentMode != RemovalMode.CROP
-        binding.timeRangePanel.visibility =
-            if (box.useTimeRange && currentMode != RemovalMode.CROP) View.VISIBLE else View.GONE
-        syncTimeRangeButtons()
-    }
+    private fun refreshAreaChipsAndTimeline() {
+        val boxes = binding.watermarkOverlay.getBoxes()
+        val selected = binding.watermarkOverlay.selectedBoxIndex
 
-    private fun syncTimeRangeButtons() {
-        val box = binding.watermarkOverlay.getSelectedBox() ?: return
-        binding.btnSetStart.text = String.format(Locale.US, "Start: %.1fs", box.startSec)
-        binding.btnSetEnd.text = if (box.endSec > 0f) {
-            String.format(Locale.US, "End: %.1fs", box.endSec)
-        } else {
-            "End: Full"
+        binding.tvAreaCount.text = "${boxes.size} / $MAX_BOXES"
+        binding.timelineView.setData(boxes, selected, videoDurationMs)
+
+        val container = binding.areaChipsContainer
+        container.removeAllViews()
+        val density = resources.displayMetrics.density
+
+        boxes.forEachIndexed { idx, box ->
+            val isSelected = idx == selected
+            val end = if (box.endMs > 0L) box.endMs else videoDurationMs
+            val chip = TextView(this).apply {
+                text = if (isSelected) {
+                    val rangeStr = "${GalleryHelper.formatDuration(box.startMs)}–${GalleryHelper.formatDuration(end)}"
+                    if (boxes.size > 1) "#${idx + 1}  $rangeStr  ✕" else "#${idx + 1}  $rangeStr"
+                } else {
+                    "#${idx + 1}"
+                }
+                textSize = 12f
+                isSingleLine = true
+                gravity = Gravity.CENTER
+                setPadding(
+                    (12 * density).toInt(),
+                    (5 * density).toInt(),
+                    (12 * density).toInt(),
+                    (5 * density).toInt()
+                )
+                setTextColor(if (isSelected) Color.parseColor("#04101D") else box.color)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 18 * density
+                    if (isSelected) {
+                        setColor(box.color)
+                    } else {
+                        setColor(Color.parseColor("#18253D"))
+                        setStroke((1.5f * density).toInt(), box.color)
+                    }
+                }
+
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    (32 * density).toInt()
+                ).apply {
+                    marginEnd = (8 * density).toInt()
+                }
+                layoutParams = lp
+
+                setOnClickListener {
+                    if (isSelected && boxes.size > 1) {
+                        binding.watermarkOverlay.removeBoxAt(idx)
+                    } else {
+                        binding.watermarkOverlay.selectBox(idx)
+                    }
+                }
+            }
+            container.addView(chip)
         }
     }
 
@@ -242,9 +268,8 @@ class EditorActivity : AppCompatActivity() {
                     val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
                     val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
                     val rot = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-                    val dur = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                    val dur = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 10_000L
 
-                    // Swap dimensions for 90/270 degree portrait videos so overlay matches FFmpeg auto-rotated output
                     if (rot == 90 || rot == 270) {
                         videoWidth = h
                         videoHeight = w
@@ -252,7 +277,7 @@ class EditorActivity : AppCompatActivity() {
                         videoWidth = w
                         videoHeight = h
                     }
-                    videoDurationMs = dur
+                    if (dur > 0) videoDurationMs = dur
                 } catch (_: Exception) {
                 } finally {
                     try {
@@ -262,7 +287,14 @@ class EditorActivity : AppCompatActivity() {
                 }
             }
 
+            binding.tvVideoMeta.text =
+                "${GalleryHelper.formatDuration(videoDurationMs)} • ${videoWidth}×${videoHeight}"
+            binding.tvTotalTime.text = "/ ${GalleryHelper.formatDuration(videoDurationMs)}"
             binding.watermarkOverlay.setVideoDimensions(videoWidth, videoHeight)
+            binding.watermarkOverlay.setVideoDuration(videoDurationMs)
+
+            // Extract filmstrip thumbnails asynchronously for smooth visual timeline
+            extractFilmstripThumbnails()
 
             val exo = ExoPlayer.Builder(this@EditorActivity).build().apply {
                 setMediaItem(MediaItem.fromUri(videoUri))
@@ -276,12 +308,17 @@ class EditorActivity : AppCompatActivity() {
                             videoWidth = w
                             videoHeight = h
                             binding.watermarkOverlay.setVideoDimensions(w, h)
+                            binding.tvVideoMeta.text =
+                                "${GalleryHelper.formatDuration(videoDurationMs)} • ${videoWidth}×${videoHeight}"
                         }
                     }
 
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY && duration > 0) {
                             videoDurationMs = duration
+                            binding.watermarkOverlay.setVideoDuration(duration)
+                            binding.tvVideoMeta.text =
+                                "${GalleryHelper.formatDuration(videoDurationMs)} • ${videoWidth}×${videoHeight}"
                         }
                     }
                 })
@@ -291,6 +328,39 @@ class EditorActivity : AppCompatActivity() {
             player = exo
             binding.playerView.player = exo
             handler.post(progressUpdater)
+        }
+    }
+
+    private fun extractFilmstripThumbnails() {
+        lifecycleScope.launch {
+            val thumbs = withContext(Dispatchers.IO) {
+                val list = mutableListOf<Bitmap>()
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(this@EditorActivity, videoUri)
+                    val frameCount = 8
+                    val stepUs = (videoDurationMs * 1000L) / frameCount
+                    for (i in 0 until frameCount) {
+                        val timeUs = (i * stepUs + stepUs / 2L).coerceAtLeast(0L)
+                        val raw = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        if (raw != null) {
+                            val scaled = Bitmap.createScaledBitmap(raw, 120, 90, true)
+                            if (scaled != raw) raw.recycle()
+                            list.add(scaled)
+                        }
+                    }
+                } catch (_: Exception) {
+                } finally {
+                    try {
+                        retriever.release()
+                    } catch (_: Exception) {
+                    }
+                }
+                list
+            }
+            if (thumbs.isNotEmpty()) {
+                binding.timelineView.setThumbnails(thumbs)
+            }
         }
     }
 

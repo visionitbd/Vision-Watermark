@@ -10,11 +10,11 @@ import android.util.AttributeSet
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import com.visionit.watermark.model.BoxColors
 import com.visionit.watermark.model.RemovalMode
 import com.visionit.watermark.model.WatermarkBox
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
 
 class WatermarkOverlayView @JvmOverloads constructor(
     context: Context,
@@ -24,6 +24,9 @@ class WatermarkOverlayView @JvmOverloads constructor(
     private val videoRect = RectF()
     private val boxes = mutableListOf<WatermarkBox>()
     private var nextId = 1
+    private var totalDurationMs = 10_000L
+    private var currentPlayheadMs = 0L
+
     var selectedBoxIndex: Int = 0
         private set
 
@@ -37,7 +40,6 @@ class WatermarkOverlayView @JvmOverloads constructor(
                 selectedBoxIndex = 0
             }
             if (value == RemovalMode.CROP && boxes.size == 1) {
-                // Default crop frame covers 85% of video so user can drag edges in
                 val b = boxes[0]
                 if ((b.right - b.left) < 0.45f && (b.bottom - b.top) < 0.45f) {
                     b.left = 0.05f
@@ -46,11 +48,11 @@ class WatermarkOverlayView @JvmOverloads constructor(
                     b.bottom = 0.85f
                 }
             }
-            onSelectionChanged?.invoke()
+            onBoxesChanged?.invoke()
             invalidate()
         }
 
-    var onSelectionChanged: (() -> Unit)? = null
+    var onBoxesChanged: (() -> Unit)? = null
 
     private var videoWidth = 16
     private var videoHeight = 9
@@ -62,22 +64,14 @@ class WatermarkOverlayView @JvmOverloads constructor(
     private val handleHitRadius = 56f
     private val minNormSize = 0.06f
 
-    private val activeBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#00E5FF")
+    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 6f
-        pathEffect = DashPathEffect(floatArrayOf(18f, 12f), 0f)
     }
 
-    private val inactiveBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#88A3C7FF")
-        style = Paint.Style.STROKE
-        strokeWidth = 4f
-        pathEffect = DashPathEffect(floatArrayOf(14f, 10f), 0f)
-    }
+    private val inactiveDashEffect = DashPathEffect(floatArrayOf(14f, 10f), 0f)
 
     private val boxFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#2A00E5FF")
         style = Paint.Style.FILL
     }
 
@@ -87,7 +81,6 @@ class WatermarkOverlayView @JvmOverloads constructor(
     }
 
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#00E5FF")
         style = Paint.Style.FILL
     }
 
@@ -97,18 +90,37 @@ class WatermarkOverlayView @JvmOverloads constructor(
     }
 
     private val badgeBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#DD00E5FF")
         style = Paint.Style.FILL
     }
 
     private val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#04101D")
-        textSize = 28f
+        textSize = 26f
         isFakeBoldText = true
     }
 
     init {
-        addDefaultBox()
+        addDefaultBox(0L, 10_000L)
+    }
+
+    fun setVideoDuration(durationMs: Long) {
+        if (durationMs > 0) {
+            val oldDur = totalDurationMs
+            totalDurationMs = durationMs
+            boxes.forEach { b ->
+                if (b.endMs <= 0L || b.endMs == oldDur || b.endMs > durationMs) {
+                    b.endMs = durationMs
+                }
+                b.startMs = b.startMs.coerceIn(0L, max(0L, b.endMs - 300L))
+            }
+            onBoxesChanged?.invoke()
+            invalidate()
+        }
+    }
+
+    fun setCurrentPlayhead(positionMs: Long) {
+        currentPlayheadMs = positionMs
+        invalidate()
     }
 
     fun setVideoDimensions(width: Int, height: Int) {
@@ -120,32 +132,46 @@ class WatermarkOverlayView @JvmOverloads constructor(
         }
     }
 
-    fun addDefaultBox() {
-        val offset = (boxes.size % 4) * 0.05f
+    fun selectBox(index: Int) {
+        if (index in boxes.indices) {
+            selectedBoxIndex = index
+            onBoxesChanged?.invoke()
+            invalidate()
+        }
+    }
+
+    fun addDefaultBox(startMs: Long = currentPlayheadMs, endMs: Long = totalDurationMs) {
+        val color = BoxColors.colorForIndex(nextId - 1)
+        val offset = (boxes.size % 4) * 0.06f
+        val safeStart = startMs.coerceIn(0L, max(0L, totalDurationMs - 500L))
+        val safeEnd = if (endMs > safeStart + 300L) endMs.coerceAtMost(totalDurationMs) else totalDurationMs
         val box = WatermarkBox(
             id = nextId++,
-            left = (0.58f - offset).coerceIn(0.08f, 0.65f),
-            top = (0.70f - offset).coerceIn(0.08f, 0.72f),
-            right = (0.92f - offset).coerceIn(0.30f, 0.94f),
-            bottom = (0.88f - offset).coerceIn(0.25f, 0.92f)
+            left = (0.55f - offset).coerceIn(0.08f, 0.62f),
+            top = (0.68f - offset).coerceIn(0.08f, 0.72f),
+            right = (0.90f - offset).coerceIn(0.32f, 0.94f),
+            bottom = (0.84f - offset).coerceIn(0.25f, 0.92f),
+            color = color,
+            startMs = safeStart,
+            endMs = safeEnd
         )
         boxes.add(box)
         selectedBoxIndex = boxes.lastIndex
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-        onSelectionChanged?.invoke()
+        onBoxesChanged?.invoke()
         invalidate()
     }
 
-    fun removeSelectedBox(): Boolean {
-        if (boxes.size <= 1) return false
-        boxes.removeAt(selectedBoxIndex)
-        selectedBoxIndex = (selectedBoxIndex - 1).coerceAtLeast(0)
-        onSelectionChanged?.invoke()
+    fun removeBoxAt(index: Int): Boolean {
+        if (boxes.size <= 1 || index !in boxes.indices) return false
+        boxes.removeAt(index)
+        selectedBoxIndex = selectedBoxIndex.coerceIn(0, boxes.lastIndex)
+        onBoxesChanged?.invoke()
         invalidate()
         return true
     }
 
-    fun getBoxes(): List<WatermarkBox> = boxes.toList()
+    fun getBoxes(): List<WatermarkBox> = boxes
 
     fun getSelectedBox(): WatermarkBox? = boxes.getOrNull(selectedBoxIndex)
 
@@ -181,13 +207,18 @@ class WatermarkOverlayView @JvmOverloads constructor(
         )
     }
 
+    private fun isBoxActiveAtPlayhead(box: WatermarkBox): Boolean {
+        if (mode == RemovalMode.CROP) return true
+        val end = if (box.endMs > 0L) box.endMs else totalDurationMs
+        return currentPlayheadMs in box.startMs..end
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (videoRect.width() <= 0f || videoRect.height() <= 0f) return
 
         if (mode == RemovalMode.CROP && boxes.isNotEmpty()) {
             val r = boxToScreenRect(boxes[0])
-            // Dim outside crop region
             canvas.drawRect(videoRect.left, videoRect.top, videoRect.right, r.top, cropDimPaint)
             canvas.drawRect(videoRect.left, r.bottom, videoRect.right, videoRect.bottom, cropDimPaint)
             canvas.drawRect(videoRect.left, r.top, r.left, r.bottom, cropDimPaint)
@@ -197,12 +228,28 @@ class WatermarkOverlayView @JvmOverloads constructor(
         boxes.forEachIndexed { index, box ->
             val r = boxToScreenRect(box)
             val isSelected = index == selectedBoxIndex
+            val isActiveNow = isBoxActiveAtPlayhead(box)
+
+            // Selected box is always editable; non-selected outside time window is faint
+            val alphaFactor = when {
+                isSelected && isActiveNow -> 255
+                isSelected -> 170
+                isActiveNow -> 200
+                else -> 65
+            }
+
             if (mode != RemovalMode.CROP) {
+                boxFillPaint.color = Color.argb((alphaFactor * 0.16f).toInt(), Color.red(box.color), Color.green(box.color), Color.blue(box.color))
                 canvas.drawRect(r, boxFillPaint)
             }
-            canvas.drawRect(r, if (isSelected) activeBorderPaint else inactiveBorderPaint)
+
+            borderPaint.color = Color.argb(alphaFactor, Color.red(box.color), Color.green(box.color), Color.blue(box.color))
+            borderPaint.strokeWidth = if (isSelected) 6f else 4f
+            borderPaint.pathEffect = if (isActiveNow) null else inactiveDashEffect
+            canvas.drawRect(r, borderPaint)
 
             if (isSelected) {
+                handlePaint.color = box.color
                 drawHandle(canvas, r.left, r.top)
                 drawHandle(canvas, r.right, r.top)
                 drawHandle(canvas, r.left, r.bottom)
@@ -211,19 +258,20 @@ class WatermarkOverlayView @JvmOverloads constructor(
 
             if (mode != RemovalMode.CROP) {
                 val label = "#${index + 1}"
-                val badgeW = 54f
-                val badgeH = 34f
+                val badgeW = 52f
+                val badgeH = 32f
                 val bx = r.left
-                val by = (r.top - badgeH - 6f).coerceAtLeast(videoRect.top + 4f)
-                canvas.drawRoundRect(bx, by, bx + badgeW, by + badgeH, 10f, 10f, badgeBgPaint)
-                canvas.drawText(label, bx + 11f, by + 24f, badgeTextPaint)
+                val by = (r.top - badgeH - 4f).coerceAtLeast(videoRect.top + 4f)
+                badgeBgPaint.color = Color.argb(alphaFactor, Color.red(box.color), Color.green(box.color), Color.blue(box.color))
+                canvas.drawRoundRect(bx, by, bx + badgeW, by + badgeH, 8f, 8f, badgeBgPaint)
+                canvas.drawText(label, bx + 11f, by + 23f, badgeTextPaint)
             }
         }
     }
 
     private fun drawHandle(canvas: Canvas, cx: Float, cy: Float) {
-        canvas.drawRoundRect(cx - 14f, cy - 14f, cx + 14f, cy + 14f, 6f, 6f, handlePaint)
-        canvas.drawRoundRect(cx - 6f, cy - 6f, cx + 6f, cy + 6f, 3f, 3f, handleInnerPaint)
+        canvas.drawRoundRect(cx - 13f, cy - 13f, cx + 13f, cy + 13f, 6f, 6f, handlePaint)
+        canvas.drawRoundRect(cx - 5f, cy - 5f, cx + 5f, cy + 5f, 3f, 3f, handleInnerPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -237,7 +285,6 @@ class WatermarkOverlayView @JvmOverloads constructor(
                 lastTouchY = y
                 dragMode = DragMode.NONE
 
-                // Check active box handles first
                 val activeBox = getSelectedBox()
                 if (activeBox != null) {
                     val r = boxToScreenRect(activeBox)
@@ -248,13 +295,12 @@ class WatermarkOverlayView @JvmOverloads constructor(
                     }
                 }
 
-                // Check if user tapped any box interior (reverse order so top-most wins)
                 for (i in boxes.indices.reversed()) {
                     val r = boxToScreenRect(boxes[i])
                     if (r.contains(x, y)) {
                         selectedBoxIndex = i
                         dragMode = DragMode.MOVE
-                        onSelectionChanged?.invoke()
+                        onBoxesChanged?.invoke()
                         parent?.requestDisallowInterceptTouchEvent(true)
                         invalidate()
                         return true
@@ -331,20 +377,22 @@ class WatermarkOverlayView @JvmOverloads constructor(
             val rawW = ((b.right - b.left) * actualVideoW).toInt()
             val rawH = ((b.bottom - b.top) * actualVideoH).toInt()
 
-            // Safe bounds required by FFmpeg delogo (must stay >= 2px inside frame border)
             val safeX = rawX.coerceIn(2, max(2, actualVideoW - 12))
             val safeY = rawY.coerceIn(2, max(2, actualVideoH - 12))
             val safeW = rawW.coerceIn(8, max(8, actualVideoW - safeX - 2))
             val safeH = rawH.coerceIn(8, max(8, actualVideoH - safeY - 2))
+
+            val fullEnd = if (b.endMs > 0L) b.endMs else totalDurationMs
+            val isFullVideo = b.startMs <= 100L && fullEnd >= totalDurationMs - 150L
 
             PixelBox(
                 x = safeX,
                 y = safeY,
                 w = safeW,
                 h = safeH,
-                useTimeRange = b.useTimeRange,
-                startSec = b.startSec,
-                endSec = b.endSec
+                useTimeRange = !isFullVideo,
+                startSec = b.startMs / 1000f,
+                endSec = fullEnd / 1000f
             )
         }
     }
