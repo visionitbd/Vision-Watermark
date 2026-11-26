@@ -21,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -63,6 +64,8 @@ class EditorActivity : AppCompatActivity() {
     private var flipV = false
     private var compressLevel = "COMPRESS_BALANCED"
     private var speedFactor = 1.0f
+    private var targetResolution = "ORIGINAL"
+    private var muteReverseAudio = false
     private var isReversePreviewActive = false
     private var reversePreviewPosMs = 0L
 
@@ -77,7 +80,7 @@ class EditorActivity : AppCompatActivity() {
     private var isSeeking = false
 
     private val pickLogoLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
             lifecycleScope.launch {
@@ -185,14 +188,14 @@ class EditorActivity : AppCompatActivity() {
                 updateCompressChips()
             }
             "TRIM" -> {
-                binding.tvEditorHeader.text = "Multi-Cut Trim"
+                binding.tvEditorHeader.text = "Trim & Split"
                 binding.modeChipsRow.visibility = View.GONE
                 binding.watermarkOverlay.visibility = View.GONE
-                binding.areaBarRow.visibility = View.VISIBLE
-                binding.btnAddArea.text = "+ Cut Clip"
+                binding.areaBarRow.visibility = View.GONE
                 binding.tvQuickToolBanner.visibility = View.VISIBLE
-                binding.tvQuickToolBanner.text = "Keep up to 3 clips — playback previews only kept clips!"
+                binding.tvQuickToolBanner.text = "Move playhead & tap Split to cut like CapCut, then Delete unwanted parts"
                 binding.timelineCard.visibility = View.VISIBLE
+                binding.capcutTrimBar.visibility = View.VISIBLE
             }
             "SPEED" -> {
                 binding.tvEditorHeader.text = "Video Speed"
@@ -201,7 +204,7 @@ class EditorActivity : AppCompatActivity() {
                 binding.areaBarRow.visibility = View.GONE
                 binding.timelineCard.visibility = View.GONE
                 binding.speedControlsPanel.visibility = View.VISIBLE
-                binding.btnPreviewReverse.visibility = View.GONE
+                binding.reverseActionsRow.visibility = View.GONE
                 binding.tvSpeedLabel.text = "Drag slider for live speed preview"
                 speedFactor = 1.0f
                 binding.seekSpeed.progress = 10 // 0.5 + 10*0.05 = 1.00x
@@ -215,12 +218,13 @@ class EditorActivity : AppCompatActivity() {
                 binding.watermarkOverlay.visibility = View.VISIBLE
                 binding.watermarkOverlay.isAddOverlayMode = true
                 binding.addTextControlsPanel.visibility = View.VISIBLE
-                selectFont("MODERN")
+                selectFont("HIND_BOLD")
                 selectTextColor(Color.WHITE)
                 binding.watermarkOverlay.previewText = binding.etWatermarkText.text?.toString().orEmpty()
             }
             "TO_AUDIO" -> {
                 binding.tvEditorHeader.text = "Extract Audio"
+                binding.btnResolution.visibility = View.GONE
                 binding.modeChipsRow.visibility = View.GONE
                 binding.watermarkOverlay.visibility = View.GONE
                 binding.areaBarRow.visibility = View.GONE
@@ -235,8 +239,8 @@ class EditorActivity : AppCompatActivity() {
                 binding.areaBarRow.visibility = View.GONE
                 binding.timelineCard.visibility = View.GONE
                 binding.speedControlsPanel.visibility = View.VISIBLE
-                binding.btnPreviewReverse.visibility = View.VISIBLE
-                binding.tvSpeedLabel.text = "Reverse Speed (adjust freely)"
+                binding.reverseActionsRow.visibility = View.VISIBLE
+                binding.tvSpeedLabel.text = "Reverse Speed (0.5x Slow – 2.0x Fast)"
                 speedFactor = 1.0f
                 binding.seekSpeed.progress = 10
                 updateSpeedUi()
@@ -275,22 +279,27 @@ class EditorActivity : AppCompatActivity() {
         selectedFontKey = key
         selectedTypeface = try {
             when (key) {
-                "BANGLA_SANS" -> Typeface.createFromAsset(assets, "fonts/bangla_sans_bold.ttf")
-                "BANGLA_SERIF" -> Typeface.createFromAsset(assets, "fonts/bangla_serif_bold.ttf")
-                "ITALIC" -> Typeface.createFromAsset(assets, "fonts/stylish_italic.ttf")
-                "MONO" -> Typeface.createFromAsset(assets, "fonts/tech_mono.ttf")
-                else -> Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                "HIND_BOLD" -> Typeface.createFromAsset(assets, "fonts/HindSiliguri-Bold.ttf")
+                "HIND_SEMI" -> Typeface.createFromAsset(assets, "fonts/HindSiliguri-SemiBold.ttf")
+                "ENG_SANS" -> Typeface.createFromAsset(assets, "fonts/eng_sans_bold.ttf")
+                "ENG_SERIF" -> Typeface.createFromAsset(assets, "fonts/eng_serif_bold.ttf")
+                "ENG_ITALIC" -> Typeface.createFromAsset(assets, "fonts/eng_italic_bold.ttf")
+                "ENG_CONDENSED" -> Typeface.createFromAsset(assets, "fonts/eng_condensed_bold.ttf")
+                "ENG_MONO" -> Typeface.createFromAsset(assets, "fonts/eng_mono_bold.ttf")
+                else -> Typeface.createFromAsset(assets, "fonts/HindSiliguri-Bold.ttf")
             }
         } catch (_: Exception) {
             Typeface.DEFAULT_BOLD
         }
         binding.watermarkOverlay.previewTypeface = selectedTypeface
 
-        styleChip(binding.fontModern, key == "MODERN")
-        styleChip(binding.fontBanglaSans, key == "BANGLA_SANS")
-        styleChip(binding.fontBanglaSerif, key == "BANGLA_SERIF")
-        styleChip(binding.fontItalic, key == "ITALIC")
-        styleChip(binding.fontMono, key == "MONO")
+        styleChip(binding.fontHindBold, key == "HIND_BOLD")
+        styleChip(binding.fontHindSemi, key == "HIND_SEMI")
+        styleChip(binding.fontEngSans, key == "ENG_SANS")
+        styleChip(binding.fontEngSerif, key == "ENG_SERIF")
+        styleChip(binding.fontEngItalic, key == "ENG_ITALIC")
+        styleChip(binding.fontEngCondensed, key == "ENG_CONDENSED")
+        styleChip(binding.fontEngMono, key == "ENG_MONO")
     }
 
     private fun selectTextColor(color: Int) {
@@ -314,6 +323,53 @@ class EditorActivity : AppCompatActivity() {
     private fun setupControls() {
         binding.btnBack.setOnClickListener { finish() }
         binding.btnExport.setOnClickListener { startProcessing() }
+
+        binding.btnResolution.text = "Orig"
+        binding.btnResolution.setOnClickListener {
+            targetResolution = when (targetResolution) {
+                "ORIGINAL" -> "1080P"
+                "1080P" -> "720P"
+                else -> "ORIGINAL"
+            }
+            binding.btnResolution.text = when (targetResolution) {
+                "1080P" -> "1080p"
+                "720P" -> "720p"
+                else -> "Orig"
+            }
+            Toast.makeText(this, "Export Resolution: ${binding.btnResolution.text}", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.btnMuteReverse.setOnClickListener {
+            muteReverseAudio = !muteReverseAudio
+            binding.btnMuteReverse.text = if (muteReverseAudio) "Audio: Mute" else "Audio: On"
+        }
+
+        // CapCut-style Trim Bar
+        binding.btnCapSplit.setOnClickListener {
+            val pos = player?.currentPosition ?: 0L
+            if (binding.watermarkOverlay.splitClipAt(pos, maxClips = 5)) {
+                Toast.makeText(this, "Split at ${GalleryHelper.formatDuration(pos)}!", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Move playhead inside a clip (away from edges) to Split", Toast.LENGTH_SHORT).show()
+            }
+        }
+        binding.btnCapDelete.setOnClickListener {
+            if (binding.watermarkOverlay.getBoxes().size > 1) {
+                binding.watermarkOverlay.removeBoxAt(binding.watermarkOverlay.selectedBoxIndex)
+                Toast.makeText(this, "Clip removed!", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Split first to delete a section", Toast.LENGTH_SHORT).show()
+            }
+        }
+        binding.btnCapUndo.setOnClickListener {
+            if (!binding.watermarkOverlay.undo()) {
+                Toast.makeText(this, "Nothing to undo", Toast.LENGTH_SHORT).show()
+            }
+        }
+        binding.btnCapReset.setOnClickListener {
+            binding.watermarkOverlay.resetToSingleFullClip()
+            Toast.makeText(this, "Reset to full video", Toast.LENGTH_SHORT).show()
+        }
 
         // Flip buttons
         binding.btnFlipHorizontal.setOnClickListener {
@@ -350,10 +406,10 @@ class EditorActivity : AppCompatActivity() {
                 reversePreviewPosMs = (player?.currentPosition ?: videoDurationMs).let {
                     if (it <= 200L) videoDurationMs else it
                 }
-                binding.btnPreviewReverse.text = "Stop Reverse Preview"
+                binding.btnPreviewReverse.text = "Stop Preview"
                 binding.btnPlayPause.setImageResource(R.drawable.ic_pause)
             } else {
-                binding.btnPreviewReverse.text = "Play Reverse Preview"
+                binding.btnPreviewReverse.text = "Preview Backwards"
                 binding.btnPlayPause.setImageResource(R.drawable.ic_play)
             }
         }
@@ -373,15 +429,17 @@ class EditorActivity : AppCompatActivity() {
                 binding.watermarkOverlay.previewLogoBitmap = null
                 binding.btnPickLogo.text = "+ Logo"
             } else {
-                pickLogoLauncher.launch(arrayOf("image/*"))
+                pickLogoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
         }
 
-        binding.fontModern.setOnClickListener { selectFont("MODERN") }
-        binding.fontBanglaSans.setOnClickListener { selectFont("BANGLA_SANS") }
-        binding.fontBanglaSerif.setOnClickListener { selectFont("BANGLA_SERIF") }
-        binding.fontItalic.setOnClickListener { selectFont("ITALIC") }
-        binding.fontMono.setOnClickListener { selectFont("MONO") }
+        binding.fontHindBold.setOnClickListener { selectFont("HIND_BOLD") }
+        binding.fontHindSemi.setOnClickListener { selectFont("HIND_SEMI") }
+        binding.fontEngSans.setOnClickListener { selectFont("ENG_SANS") }
+        binding.fontEngSerif.setOnClickListener { selectFont("ENG_SERIF") }
+        binding.fontEngItalic.setOnClickListener { selectFont("ENG_ITALIC") }
+        binding.fontEngCondensed.setOnClickListener { selectFont("ENG_CONDENSED") }
+        binding.fontEngMono.setOnClickListener { selectFont("ENG_MONO") }
 
         binding.colorWhite.setOnClickListener { selectTextColor(Color.WHITE) }
         binding.colorYellow.setOnClickListener { selectTextColor(Color.parseColor("#FFD600")) }
@@ -412,7 +470,7 @@ class EditorActivity : AppCompatActivity() {
         binding.btnPlayPause.setOnClickListener {
             if (isReversePreviewActive) {
                 isReversePreviewActive = false
-                binding.btnPreviewReverse.text = "Play Reverse Preview"
+                binding.btnPreviewReverse.text = "Preview Backwards"
                 binding.btnPlayPause.setImageResource(R.drawable.ic_play)
                 return@setOnClickListener
             }
@@ -784,6 +842,8 @@ class EditorActivity : AppCompatActivity() {
             durationMs = videoDurationMs,
             quickToolCommand = resolvedQuickCmd,
             hasAudio = videoHasAudio,
+            muteAudio = (quickTool == "REVERSE" && muteReverseAudio),
+            targetResolution = targetResolution,
             trimSegments = trimSegs,
             speedFactor = speedFactor,
             overlayPngPath = pngFile?.absolutePath,

@@ -57,6 +57,21 @@
             </LinearLayout>
 
             <TextView
+                android:id="@+id/btnResolution"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/bg_pill_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:paddingHorizontal="10dp"
+                android:text="1080p"
+                android:textColor="@color/cyan_accent"
+                android:textSize="11.5sp"
+                android:textStyle="bold" />
+
+            <TextView
                 android:id="@+id/btnExport"
                 android:layout_width="wrap_content"
                 android:layout_height="36dp"
@@ -397,20 +412,43 @@
                     android:textSize="11sp" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/btnPreviewReverse"
+            <LinearLayout
+                android:id="@+id/reverseActionsRow"
                 android:layout_width="match_parent"
-                android:layout_height="38dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_pill_button"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:text="Play Reverse Preview"
-                android:textColor="@color/cyan_accent"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
+                android:layout_height="42dp"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/btnPreviewReverse"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1.35"
+                    android:background="@drawable/bg_primary_gradient_btn"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="Preview Backwards"
+                    android:textColor="#04101D"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btnMuteReverse"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_pill_button"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="Audio: On"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12.5sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- Dedicated ADD TEXT / LOGO Controls Panel (Live Preview + Bangla/English Fonts + Color + Image Logo!) -->
@@ -460,7 +498,7 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <!-- Stylish Fonts Row (English & Bangla) -->
+            <!-- Fonts Row: Hind Siliguri (Bangla) + 5 English Bold Styles -->
             <HorizontalScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -474,7 +512,7 @@
                     android:orientation="horizontal">
 
                     <TextView
-                        android:id="@+id/fontModern"
+                        android:id="@+id/fontHindBold"
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
                         android:background="@drawable/bg_chip_selected"
@@ -482,13 +520,13 @@
                         android:focusable="true"
                         android:gravity="center"
                         android:paddingHorizontal="12dp"
-                        android:text="Modern"
+                        android:text="Hind Siliguri Bold"
                         android:textColor="#04101D"
                         android:textSize="11.5sp"
                         android:textStyle="bold" />
 
                     <TextView
-                        android:id="@+id/fontBanglaSans"
+                        android:id="@+id/fontHindSemi"
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
                         android:layout_marginStart="6dp"
@@ -497,13 +535,13 @@
                         android:focusable="true"
                         android:gravity="center"
                         android:paddingHorizontal="12dp"
-                        android:text="বাংলা বোল্ড"
+                        android:text="Hind Siliguri"
                         android:textColor="@color/text_primary"
                         android:textSize="11.5sp"
                         android:textStyle="bold" />
 
                     <TextView
-                        android:id="@+id/fontBanglaSerif"
+                        android:id="@+id/fontEngSans"
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
                         android:layout_marginStart="6dp"
@@ -512,13 +550,13 @@
                         android:focusable="true"
                         android:gravity="center"
                         android:paddingHorizontal="12dp"
-                        android:text="বাংলা স্টাইলিশ"
+                        android:text="Sans Bold"
                         android:textColor="@color/text_primary"
                         android:textSize="11.5sp"
                         android:textStyle="bold" />
 
                     <TextView
-                        android:id="@+id/fontItalic"
+                        android:id="@+id/fontEngSerif"
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
                         android:layout_marginStart="6dp"
@@ -527,13 +565,13 @@
                         android:focusable="true"
                         android:gravity="center"
                         android:paddingHorizontal="12dp"
-                        android:text="Classic Italic"
+                        android:text="Serif Bold"
                         android:textColor="@color/text_primary"
                         android:textSize="11.5sp"
                         android:textStyle="bold" />
 
                     <TextView
-                        android:id="@+id/fontMono"
+                        android:id="@+id/fontEngItalic"
                         android:layout_width="wrap_content"
                         android:layout_height="match_parent"
                         android:layout_marginStart="6dp"
@@ -542,7 +580,37 @@
                         android:focusable="true"
                         android:gravity="center"
                         android:paddingHorizontal="12dp"
-                        android:text="Mono"
+                        android:text="Italic Bold"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11.5sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/fontEngCondensed"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="6dp"
+                        android:background="@drawable/bg_chip_unselected"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:paddingHorizontal="12dp"
+                        android:text="Impact Bold"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11.5sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/fontEngMono"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="6dp"
+                        android:background="@drawable/bg_chip_unselected"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:paddingHorizontal="12dp"
+                        android:text="Mono Bold"
                         android:textColor="@color/text_primary"
                         android:textSize="11.5sp"
                         android:textStyle="bold" />
@@ -736,6 +804,109 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
         </FrameLayout>
+
+        <!-- CapCut-Style Trim Action Bar (Split | Delete | Undo | Reset) -->
+        <LinearLayout
+            android:id="@+id/capcutTrimBar"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_glass_card"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/btnCapSplit"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="Split"
+                    android:src="@drawable/ic_split" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Split"
+                    android:textColor="@color/cyan_accent"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/btnCapDelete"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="Delete"
+                    android:src="@drawable/ic_delete" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Delete"
+                    android:textColor="@color/danger_red"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/btnCapUndo"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="Undo"
+                    android:src="@drawable/ic_undo" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Undo"
+                    android:textColor="@color/text_primary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btnCapReset"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="Reset"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
     </LinearLayout>
 

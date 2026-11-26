@@ -1,78 +1,110 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="84dp"
-    android:layout_marginBottom="12dp"
+    android:layout_height="wrap_content"
+    android:layout_margin="6dp"
     android:background="@drawable/bg_glass_card"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:padding="10dp">
+    android:orientation="vertical"
+    android:padding="8dp">
 
     <FrameLayout
-        android:layout_width="96dp"
-        android:layout_height="64dp">
+        android:layout_width="match_parent"
+        android:layout_height="136dp">
 
         <ImageView
             android:id="@+id/ivThumbnail"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#0C1524"
+            android:background="#08101E"
             android:contentDescription="Video thumbnail"
             android:scaleType="centerCrop" />
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_gravity="center"
-            android:alpha="0.88"
-            android:contentDescription="@string/play"
-            android:src="@drawable/ic_play" />
-    </FrameLayout>
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_gravity="bottom"
+            android:background="@drawable/bg_thumb_gradient" />
 
-    <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        <ImageView
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_thumb_badge"
+            android:contentDescription="@string/play"
+            android:padding="8dp"
+            android:src="@drawable/ic_play" />
 
         <TextView
-            android:id="@+id/tvFileName"
-            android:layout_width="match_parent"
+            android:id="@+id/tvDurationBadge"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:ellipsize="middle"
-            android:singleLine="true"
-            android:textColor="@color/text_primary"
-            android:textSize="14sp"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="6dp"
+            android:background="@drawable/bg_thumb_badge"
+            android:fontFamily="monospace"
+            android:paddingHorizontal="7dp"
+            android:paddingVertical="3dp"
+            android:text="00:00"
+            android:textColor="#FFFFFF"
+            android:textSize="10.5sp"
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/tvMeta"
-            android:layout_width="match_parent"
+            android:id="@+id/tvSizeBadge"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+            android:layout_gravity="bottom|start"
+            android:layout_margin="6dp"
+            android:background="@drawable/bg_thumb_badge"
+            android:fontFamily="monospace"
+            android:paddingHorizontal="7dp"
+            android:paddingVertical="3dp"
+            android:text="0 MB"
+            android:textColor="@color/cyan_accent"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/tvFileName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:textColor="@color/text_primary"
+        android:textSize="12.5sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="34dp"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnPlayItem"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@drawable/bg_primary_gradient_btn"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="Play"
+            android:textColor="#04101D"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/btnShareItem"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/bg_circle_icon_btn"
+            android:contentDescription="@string/share"
+            android:padding="7dp"
+            android:src="@drawable/ic_share" />
     </LinearLayout>
-
-    <ImageButton
-        android:id="@+id/btnPlayItem"
-        android:layout_width="38dp"
-        android:layout_height="38dp"
-        android:layout_marginStart="6dp"
-        android:background="@drawable/bg_circle_icon_btn"
-        android:contentDescription="@string/play"
-        android:padding="8dp"
-        android:src="@drawable/ic_play" />
-
-    <ImageButton
-        android:id="@+id/btnShareItem"
-        android:layout_width="38dp"
-        android:layout_height="38dp"
-        android:layout_marginStart="8dp"
-        android:background="@drawable/bg_circle_icon_btn"
-        android:contentDescription="@string/share"
-        android:padding="9dp"
-        android:src="@drawable/ic_share" />
 
 </LinearLayout>

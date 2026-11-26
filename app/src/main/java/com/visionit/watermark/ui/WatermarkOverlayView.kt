@@ -232,6 +232,48 @@ class WatermarkOverlayView @JvmOverloads constructor(
         return true
     }
 
+
+    /**
+     * CapCut-style instant Split at current playhead timestamp!
+     * Finds the clip containing playheadMs and splits it into two clean adjacent clips.
+     */
+    fun splitClipAt(playheadMs: Long, maxClips: Int = 5): Boolean {
+        if (boxes.size >= maxClips) return false
+        val targetIdx = boxes.indexOfFirst { b ->
+            val end = if (b.endMs > b.startMs) b.endMs else totalDurationMs
+            playheadMs > b.startMs + 400L && playheadMs < end - 400L
+        }
+        if (targetIdx == -1) return false
+
+        pushUndoSnapshot()
+        val orig = boxes[targetIdx]
+        val origEnd = if (orig.endMs > orig.startMs) orig.endMs else totalDurationMs
+        orig.endMs = playheadMs
+
+        val rightClip = WatermarkBox(
+            id = nextId++,
+            left = orig.left,
+            top = orig.top,
+            right = orig.right,
+            bottom = orig.bottom,
+            color = BoxColors.colorForIndex(nextId - 1),
+            startMs = playheadMs,
+            endMs = origEnd
+        )
+        boxes.add(targetIdx + 1, rightClip)
+        selectedBoxIndex = targetIdx + 1
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        onBoxesChanged?.invoke()
+        invalidate()
+        return true
+    }
+
+    fun resetToSingleFullClip() {
+        pushUndoSnapshot()
+        boxes.clear()
+        addDefaultBox(0L, totalDurationMs, recordUndo = false)
+    }
+
     fun getBoxes(): List<WatermarkBox> = boxes
 
     fun getSelectedBox(): WatermarkBox? = boxes.getOrNull(selectedBoxIndex)

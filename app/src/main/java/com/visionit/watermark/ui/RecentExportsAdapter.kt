@@ -46,9 +46,10 @@ class RecentExportsAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: ExportedVideoItem) {
-            binding.tvFileName.text = item.name
-            binding.tvMeta.text =
-                "${GalleryHelper.formatDuration(item.durationMs)} • ${GalleryHelper.formatSize(item.sizeBytes)}"
+            val cleanName = item.name.removeSuffix(".mp4").replace("VWatermark_", "Vision ")
+            binding.tvFileName.text = cleanName
+            binding.tvDurationBadge.text = GalleryHelper.formatDuration(item.durationMs)
+            binding.tvSizeBadge.text = GalleryHelper.formatSize(item.sizeBytes)
 
             val key = item.uri.toString()
             val cached = thumbCache[key]
@@ -65,10 +66,7 @@ class RecentExportsAdapter(
                         } catch (_: Exception) {
                             null
                         } finally {
-                            try {
-                                retriever.release()
-                            } catch (_: Exception) {
-                            }
+                            try { retriever.release() } catch (_: Exception) {}
                         }
                     }
                     if (bmp != null) {

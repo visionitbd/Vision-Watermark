@@ -6,11 +6,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import com.visionit.watermark.databinding.ActivityMainBinding
 import com.visionit.watermark.ui.RecentExportsAdapter
 import com.visionit.watermark.util.GalleryHelper
@@ -27,17 +28,11 @@ class MainActivity : AppCompatActivity() {
     private var pendingQuickTool: String? = null
     private var pendingPhotoMode: String = "SMART_ERASE"
 
+    // Visual Gallery Picker for Videos (opens phone Gallery directly instead of Drive/Documents!)
     private val pickVideoLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (_: SecurityException) {
-            }
             val intent = Intent(this, EditorActivity::class.java).apply {
                 putExtra(EditorActivity.EXTRA_VIDEO_URI, uri.toString())
                 putExtra(EditorActivity.EXTRA_INITIAL_MODE, pendingEditorMode)
@@ -50,17 +45,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Visual Gallery Picker for Photos
     private val pickPhotoLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (_: SecurityException) {
-            }
             val intent = Intent(this, PhotoEditorActivity::class.java).apply {
                 putExtra(PhotoEditorActivity.EXTRA_PHOTO_URI, uri.toString())
                 putExtra(PhotoEditorActivity.EXTRA_INITIAL_MODE, pendingPhotoMode)
@@ -86,7 +75,8 @@ class MainActivity : AppCompatActivity() {
             onShare = { GalleryHelper.shareVideo(this, it.uri) }
         )
 
-        binding.rvRecentExports.layoutManager = LinearLayoutManager(this)
+        // Premium 2-column Gallery Grid for My Videos!
+        binding.rvRecentExports.layoutManager = GridLayoutManager(this, 2)
         binding.rvRecentExports.adapter = adapter
 
         // Top bar Settings & Premium Crown
@@ -129,12 +119,12 @@ class MainActivity : AppCompatActivity() {
     private fun openVideoPicker(initialMode: String, quickTool: String?) {
         pendingEditorMode = initialMode
         pendingQuickTool = quickTool
-        pickVideoLauncher.launch(arrayOf("video/*"))
+        pickVideoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
 
     private fun openPhotoPicker(photoMode: String) {
         pendingPhotoMode = photoMode
-        pickPhotoLauncher.launch(arrayOf("image/*"))
+        pickPhotoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
     private fun switchTab(showHome: Boolean) {
