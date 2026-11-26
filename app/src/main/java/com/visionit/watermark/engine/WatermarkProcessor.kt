@@ -28,6 +28,13 @@ object WatermarkProcessor {
         boxes: List<WatermarkOverlayView.PixelBox>,
         durationMs: Long,
         quickToolCommand: String? = null,
+        hasAudio: Boolean = true,
+        trimStartSec: Float = 0f,
+        trimDurationSec: Float = 0f,
+        speedFactor: Float = 1f,
+        overlayPngPath: String? = null,
+        overlayX: Int = 20,
+        overlayY: Int = 20,
         onProgress: (Int) -> Unit,
         onComplete: (Boolean, String?) -> Unit
     ) {
@@ -43,9 +50,26 @@ object WatermarkProcessor {
         }
 
         val commandArgs = if (quickToolCommand != null) {
-            buildQuickToolArgs(inputPath, outputFile.absolutePath, quickToolCommand)
+            buildQuickToolArgs(
+                inputPath = inputPath,
+                outputPath = outputFile.absolutePath,
+                cmd = quickToolCommand,
+                hasAudio = hasAudio,
+                trimStartSec = trimStartSec,
+                trimDurationSec = trimDurationSec,
+                speedFactor = speedFactor,
+                overlayPngPath = overlayPngPath,
+                overlayX = overlayX,
+                overlayY = overlayY
+            )
         } else {
             buildFfmpegArgs(inputPath, outputFile.absolutePath, mode, boxes)
+        }
+
+        val effectiveDurationMs = when (quickToolCommand) {
+            "TRIM" -> (trimDurationSec * 1000f).toLong().coerceAtLeast(500L)
+            "SPEED" -> (durationMs / speedFactor).toLong().coerceAtLeast(500L)
+            else -> durationMs
         }
 
         activeSession = FFmpegKit.executeWithArgumentsAsync(
@@ -70,9 +94,9 @@ object WatermarkProcessor {
             },
             { /* logs */ },
             { stats ->
-                if (durationMs > 0) {
+                if (effectiveDurationMs > 0) {
                     val timeMs = stats.time.toLong()
-                    val pct = ((timeMs * 100L) / durationMs).toInt().coerceIn(0, 99)
+                    val pct = ((timeMs * 100L) / effectiveDurationMs).toInt().coerceIn(0, 99)
                     onProgress(pct)
                 }
             }
@@ -82,7 +106,14 @@ object WatermarkProcessor {
     private fun buildQuickToolArgs(
         inputPath: String,
         outputPath: String,
-        cmd: String
+        cmd: String,
+        hasAudio: Boolean,
+        trimStartSec: Float,
+        trimDurationSec: Float,
+        speedFactor: Float,
+        overlayPngPath: String?,
+        overlayX: Int,
+        overlayY: Int
     ): Array<String> {
         return when (cmd) {
             "FLIP_H" -> arrayOf(
@@ -126,10 +157,67 @@ object WatermarkProcessor {
                 "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
                 outputPath
             )
-            else -> arrayOf(
+            "TRIM" -> {
+                val startStr = String.format(Locale.US, "%.2f", trimStartSec.coerceAtLeast(0f))
+                val durStr = String.format(Locale.US, "%.2f", trimDurationSec.coerceAtLeast(0.5f))
+                val args = mutableListOf(
+                    "-y", "-ss", startStr, "-i", inputPath, "-t", durStr,
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                    "-pix_fmt", "yuv420p"
+                )
+                if (hasAudio) args += listOf("-c:a", "aac", "-b:a", "192k") else args += "-an"
+                args += listOf("-movflags", "+faststart", outputPath)
+                args.toTypedArray()
+            }
+            "SPEED" -> {
+                val ptsFactor = String.format(Locale.US, "%.4f", 1f / speedFactor)
+                val tempoStr = String.format(Locale.US, "%.2f", speedFactor.coerceIn(0.5f, 2.0f))
+                val args = mutableListOf(
+                    "-y", "-i", inputPath,
+                    "-vf", "setpts=$ptsFactor*PTS"
+                )
+                if (hasAudio) {
+                    args += listOf("-af", "atempo=$tempoStr", "-c:a", "aac", "-b:a", "192k")
+                } else {
+                    args += "-an"
+                }
+                args += listOf(
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                    outputPath
+                )
+                args.toTypedArray()
+            }
+            "ADD_TEXT" -> {
+                val png = overlayPngPath ?: ""
+                arrayOf(
+                    "-y", "-i", inputPath, "-i", png,
+                    "-filter_complex", "[0:v][1:v]overlay=$overlayX:$overlayY",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                    "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+                    outputPath
+                )
+            }
+            "TO_AUDIO" -> arrayOf(
                 "-y", "-i", inputPath,
-                "-c", "copy", outputPath
+                "-vn", "-c:a", "aac", "-b:a", "192k",
+                outputPath
             )
+            "REVERSE" -> {
+                val args = mutableListOf("-y", "-i", inputPath, "-vf", "reverse")
+                if (hasAudio) {
+                    args += listOf("-af", "areverse", "-c:a", "aac", "-b:a", "192k")
+                } else {
+                    args += "-an"
+                }
+                args += listOf(
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                    outputPath
+                )
+                args.toTypedArray()
+            }
+            else -> arrayOf("-y", "-i", inputPath, "-c", "copy", outputPath)
         }
     }
 
@@ -139,10 +227,7 @@ object WatermarkProcessor {
         mode: RemovalMode,
         boxes: List<WatermarkOverlayView.PixelBox>
     ): Array<String> {
-        val args = mutableListOf(
-            "-y",
-            "-i", inputPath
-        )
+        val args = mutableListOf("-y", "-i", inputPath)
 
         when (mode) {
             RemovalMode.SMART_ERASE -> {
@@ -169,11 +254,7 @@ object WatermarkProcessor {
                     sb.append("${baseLabel}${blurredLabel}overlay=${b.x}:${b.y}$enablePart$nextLabel")
                     currentLabel = nextLabel
                 }
-                args += listOf(
-                    "-filter_complex", sb.toString(),
-                    "-map", "[vout]",
-                    "-map", "0:a?"
-                )
+                args += listOf("-filter_complex", sb.toString(), "-map", "[vout]", "-map", "0:a?")
             }
 
             RemovalMode.CROP -> {
@@ -185,12 +266,8 @@ object WatermarkProcessor {
         }
 
         args += listOf(
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-crf", "20",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "copy",
-            "-movflags", "+faststart",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+            "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
             outputPath
         )
 
@@ -212,9 +289,7 @@ object WatermarkProcessor {
         return try {
             val temp = File(context.cacheDir, "input_${System.currentTimeMillis()}.mp4")
             context.contentResolver.openInputStream(uri)?.use { input ->
-                temp.outputStream().use { output ->
-                    input.copyTo(output, bufferSize = 64 * 1024)
-                }
+                temp.outputStream().use { output -> input.copyTo(output, bufferSize = 64 * 1024) }
             }
             temp
         } catch (e: Exception) {

@@ -296,20 +296,14 @@ class PhotoEditorActivity : AppCompatActivity() {
                 val textColor = if (chosenColor != 0) chosenColor else sampleAccurateTextColor(out, box, bgColor)
                 val autoBold = if (chosenColor == 0) detectBoldness(out, box, bgColor) else isBold
 
-                // 1. Cleanly remove original text (crisp uniform fill on solid cards, delogo on photo textures)
+                // 1. Exact gradient-preserving background reconstruction (zero flat patch, zero blur!)
                 val pad = 3
-                val rx = (box.left - pad).coerceAtLeast(1)
-                val ry = (box.top - pad).coerceAtLeast(1)
-                val rw = (box.width() + pad * 2).coerceAtMost(out.width - rx - 2)
-                val rh = (box.height() + pad * 2).coerceAtMost(out.height - ry - 2)
+                val rx = (box.left - pad).coerceAtLeast(2)
+                val ry = (box.top - pad).coerceAtLeast(2)
+                val rw = (box.width() + pad * 2).coerceAtMost(out.width - rx - 3)
+                val rh = (box.height() + pad * 2).coerceAtMost(out.height - ry - 3)
                 if (rw > 2 && rh > 2) {
-                    if (bgIsUniform) {
-                        val c = Canvas(out)
-                        val fillP = Paint().apply { color = bgColor; style = Paint.Style.FILL }
-                        c.drawRect(rx.toFloat(), ry.toFloat(), (rx + rw).toFloat(), (ry + rh).toFloat(), fillP)
-                    } else {
-                        delogoRegion(out, rx, ry, rw, rh)
-                    }
+                    reconstructGradientBackground(out, rx, ry, rw, rh)
                 }
 
                 // 2. Render replacement text matching exact original height, left alignment, weight & color

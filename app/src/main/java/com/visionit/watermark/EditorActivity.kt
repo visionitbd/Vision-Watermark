@@ -1,7 +1,10 @@
 package com.visionit.watermark
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -48,12 +51,15 @@ class EditorActivity : AppCompatActivity() {
     private var videoWidth = 1280
     private var videoHeight = 720
     private var videoDurationMs = 10_000L
+    private var videoHasAudio = true
     private var currentMode = RemovalMode.SMART_ERASE
     private var quickTool: String? = null
     private var flipH = true
     private var flipV = false
     private var compressLevel = "COMPRESS_BALANCED"
+    private var speedFactor = 1.5f
     private var savedOutputUri: Uri? = null
+    private var isAudioOutput = false
     private var isSeeking = false
 
     private val handler = Handler(Looper.getMainLooper())
@@ -67,7 +73,7 @@ class EditorActivity : AppCompatActivity() {
                 binding.seekBar.progress = pos.toInt()
                 binding.tvCurrentTime.text = GalleryHelper.formatDuration(pos)
                 binding.tvTotalTime.text = "/ ${GalleryHelper.formatDuration(dur)}"
-                if (quickTool == null) {
+                if (quickTool == null || quickTool == "TRIM") {
                     binding.watermarkOverlay.setCurrentPlayhead(pos)
                     binding.timelineView.setPlayhead(pos)
                 }
@@ -114,6 +120,50 @@ class EditorActivity : AppCompatActivity() {
                 binding.compressControlsPanel.visibility = View.VISIBLE
                 updateCompressChips()
             }
+            "TRIM" -> {
+                binding.tvEditorHeader.text = "Trim Video"
+                binding.modeChipsRow.visibility = View.GONE
+                binding.watermarkOverlay.visibility = View.GONE
+                binding.areaBarRow.visibility = View.GONE
+                binding.tvQuickToolBanner.visibility = View.VISIBLE
+                binding.tvQuickToolBanner.text = "Drag the left ‹ and right › handles on the timeline below to trim"
+                binding.timelineCard.visibility = View.VISIBLE
+            }
+            "SPEED" -> {
+                binding.tvEditorHeader.text = "Video Speed"
+                binding.modeChipsRow.visibility = View.GONE
+                binding.watermarkOverlay.visibility = View.GONE
+                binding.areaBarRow.visibility = View.GONE
+                binding.timelineCard.visibility = View.GONE
+                binding.speedControlsPanel.visibility = View.VISIBLE
+                updateSpeedChips()
+            }
+            "ADD_TEXT" -> {
+                binding.tvEditorHeader.text = "Add Text / Logo"
+                binding.modeChipsRow.visibility = View.GONE
+                binding.areaBarRow.visibility = View.GONE
+                binding.timelineCard.visibility = View.GONE
+                binding.watermarkOverlay.visibility = View.VISIBLE
+                binding.addTextControlsPanel.visibility = View.VISIBLE
+            }
+            "TO_AUDIO" -> {
+                binding.tvEditorHeader.text = "Extract Audio"
+                binding.modeChipsRow.visibility = View.GONE
+                binding.watermarkOverlay.visibility = View.GONE
+                binding.areaBarRow.visibility = View.GONE
+                binding.timelineCard.visibility = View.GONE
+                binding.tvQuickToolBanner.visibility = View.VISIBLE
+                binding.tvQuickToolBanner.text = "Tap Export to extract high-quality audio (192kbps) to Music"
+            }
+            "REVERSE" -> {
+                binding.tvEditorHeader.text = "Reverse Video"
+                binding.modeChipsRow.visibility = View.GONE
+                binding.watermarkOverlay.visibility = View.GONE
+                binding.areaBarRow.visibility = View.GONE
+                binding.timelineCard.visibility = View.GONE
+                binding.tvQuickToolBanner.visibility = View.VISIBLE
+                binding.tvQuickToolBanner.text = "Tap Export to reverse this video & audio backwards"
+            }
             else -> {
                 when (intent.getStringExtra(EXTRA_INITIAL_MODE)) {
                     "BLUR" -> selectMode(RemovalMode.BLUR)
@@ -135,6 +185,14 @@ class EditorActivity : AppCompatActivity() {
         styleChip(binding.btnCompLight, compressLevel == "COMPRESS_LIGHT")
         styleChip(binding.btnCompBalanced, compressLevel == "COMPRESS_BALANCED")
         styleChip(binding.btnCompMax, compressLevel == "COMPRESS_MAX")
+    }
+
+    private fun updateSpeedChips() {
+        styleChip(binding.btnSpeed05, speedFactor == 0.5f)
+        styleChip(binding.btnSpeed075, speedFactor == 0.75f)
+        styleChip(binding.btnSpeed15, speedFactor == 1.5f)
+        styleChip(binding.btnSpeed20, speedFactor == 2.0f)
+        player?.setPlaybackSpeed(speedFactor)
     }
 
     private fun styleChip(view: TextView, active: Boolean) {
@@ -163,6 +221,12 @@ class EditorActivity : AppCompatActivity() {
         binding.btnCompBalanced.setOnClickListener { compressLevel = "COMPRESS_BALANCED"; updateCompressChips() }
         binding.btnCompMax.setOnClickListener { compressLevel = "COMPRESS_MAX"; updateCompressChips() }
 
+        // Speed buttons
+        binding.btnSpeed05.setOnClickListener { speedFactor = 0.5f; updateSpeedChips() }
+        binding.btnSpeed075.setOnClickListener { speedFactor = 0.75f; updateSpeedChips() }
+        binding.btnSpeed15.setOnClickListener { speedFactor = 1.5f; updateSpeedChips() }
+        binding.btnSpeed20.setOnClickListener { speedFactor = 2.0f; updateSpeedChips() }
+
         binding.watermarkOverlay.onBoxesChanged = {
             refreshAreaChipsAndTimeline()
         }
@@ -171,9 +235,13 @@ class EditorActivity : AppCompatActivity() {
             binding.watermarkOverlay.selectBox(idx)
         }
 
-        binding.timelineView.onRangeChanged = { _, _, _ ->
+        binding.timelineView.onRangeChanged = { _, startMs, endMs ->
             refreshAreaChipsAndTimeline()
             binding.watermarkOverlay.invalidate()
+            if (quickTool == "TRIM") {
+                binding.tvQuickToolBanner.text =
+                    "Trim range: ${GalleryHelper.formatDuration(startMs)} – ${GalleryHelper.formatDuration(endMs)}"
+            }
         }
 
         binding.timelineView.onScrubTo = { targetMs ->
@@ -200,7 +268,7 @@ class EditorActivity : AppCompatActivity() {
                     val pos = progress.toLong()
                     player?.seekTo(pos)
                     binding.tvCurrentTime.text = GalleryHelper.formatDuration(pos)
-                    if (quickTool == null) {
+                    if (quickTool == null || quickTool == "TRIM") {
                         binding.watermarkOverlay.setCurrentPlayhead(pos)
                         binding.timelineView.setPlayhead(pos)
                     }
@@ -249,11 +317,15 @@ class EditorActivity : AppCompatActivity() {
         }
 
         binding.btnPreviewResult.setOnClickListener {
-            savedOutputUri?.let { GalleryHelper.playVideo(this, it) }
+            savedOutputUri?.let { uri ->
+                if (isAudioOutput) GalleryHelper.playAudio(this, uri) else GalleryHelper.playVideo(this, uri)
+            }
         }
 
         binding.btnShareResult.setOnClickListener {
-            savedOutputUri?.let { GalleryHelper.shareVideo(this, it) }
+            savedOutputUri?.let { uri ->
+                if (isAudioOutput) GalleryHelper.shareAudio(this, uri) else GalleryHelper.shareVideo(this, uri)
+            }
         }
 
         binding.btnDoneResult.setOnClickListener {
@@ -350,6 +422,7 @@ class EditorActivity : AppCompatActivity() {
                     val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
                     val rot = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
                     val dur = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 10_000L
+                    val hasAud = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO)
 
                     if (rot == 90 || rot == 270) {
                         videoWidth = h
@@ -359,6 +432,7 @@ class EditorActivity : AppCompatActivity() {
                         videoHeight = h
                     }
                     if (dur > 0) videoDurationMs = dur
+                    videoHasAudio = (hasAud == "yes")
                 } catch (_: Exception) {
                 } finally {
                     try {
@@ -374,13 +448,14 @@ class EditorActivity : AppCompatActivity() {
             binding.watermarkOverlay.setVideoDimensions(videoWidth, videoHeight)
             binding.watermarkOverlay.setVideoDuration(videoDurationMs)
 
-            if (quickTool == null) {
+            if (quickTool == null || quickTool == "TRIM") {
                 extractFilmstripThumbnails()
             }
 
             val exo = ExoPlayer.Builder(this@EditorActivity).build().apply {
                 setMediaItem(MediaItem.fromUri(videoUri))
                 repeatMode = Player.REPEAT_MODE_ONE
+                if (quickTool == "SPEED") setPlaybackSpeed(speedFactor)
                 addListener(object : Player.Listener {
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
                         if (videoSize.width > 0 && videoSize.height > 0) {
@@ -446,16 +521,56 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
+    private fun renderTextOverlayPng(text: String, boxW: Int, boxH: Int): File {
+        val w = boxW.coerceIn(120, videoWidth)
+        val h = boxH.coerceIn(48, videoHeight)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+            setShadowLayer(6f, 2f, 2f, Color.argb(200, 0, 0, 0))
+        }
+        var sizePx = (h * 0.62f).coerceAtLeast(22f)
+        paint.textSize = sizePx
+        val measured = paint.measureText(text)
+        if (measured > w - 16f && measured > 0f) {
+            sizePx *= ((w - 16f) / measured)
+            paint.textSize = sizePx.coerceAtLeast(14f)
+        }
+        val fm = paint.fontMetrics
+        val baseline = h / 2f - (fm.ascent + fm.descent) / 2f
+        canvas.drawText(text, w / 2f, baseline, paint)
+
+        val pngFile = File(cacheDir, "text_wm_${System.currentTimeMillis()}.png")
+        pngFile.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bmp.recycle()
+        return pngFile
+    }
+
     private fun startProcessing() {
         player?.pause()
         binding.btnPlayPause.setImageResource(R.drawable.ic_play)
 
         val pixelBoxes = binding.watermarkOverlay.computePixelBoxes(videoWidth, videoHeight)
-        val tempOut = File(cacheDir, "vwatermark_${System.currentTimeMillis()}.mp4")
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        isAudioOutput = (quickTool == "TO_AUDIO")
+
+        val tempOut = if (isAudioOutput) {
+            File(cacheDir, "vwatermark_audio_$stamp.m4a")
+        } else {
+            File(cacheDir, "vwatermark_$stamp.mp4")
+        }
+
         val finalName = when (quickTool) {
             "FLIP" -> "VWatermark_Flip_$stamp.mp4"
             "COMPRESS" -> "VWatermark_Comp_$stamp.mp4"
+            "TRIM" -> "VWatermark_Trim_$stamp.mp4"
+            "SPEED" -> "VWatermark_Speed_$stamp.mp4"
+            "ADD_TEXT" -> "VWatermark_Text_$stamp.mp4"
+            "TO_AUDIO" -> "VWatermark_Audio_$stamp.m4a"
+            "REVERSE" -> "VWatermark_Rev_$stamp.mp4"
             else -> "VWatermark_$stamp.mp4"
         }
 
@@ -466,7 +581,33 @@ class EditorActivity : AppCompatActivity() {
                 else -> "FLIP_H"
             }
             "COMPRESS" -> compressLevel
-            else -> null
+            else -> quickTool
+        }
+
+        var trimStart = 0f
+        var trimDur = (videoDurationMs / 1000f)
+        if (quickTool == "TRIM") {
+            val b = binding.watermarkOverlay.getBoxes().firstOrNull()
+            if (b != null) {
+                trimStart = b.startMs / 1000f
+                val endMs = if (b.endMs > b.startMs) b.endMs else videoDurationMs
+                trimDur = ((endMs - b.startMs) / 1000f).coerceAtLeast(0.5f)
+            }
+        }
+
+        var pngFile: File? = null
+        var overlayX = 20
+        var overlayY = 20
+        if (quickTool == "ADD_TEXT") {
+            val labelText = binding.etWatermarkText.text?.toString()?.trim().orEmpty()
+            if (labelText.isBlank()) {
+                Toast.makeText(this, "Please enter watermark text first", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val firstBox = pixelBoxes.first()
+            pngFile = renderTextOverlayPng(labelText, firstBox.w, firstBox.h)
+            overlayX = firstBox.x
+            overlayY = firstBox.y
         }
 
         savedOutputUri = null
@@ -479,6 +620,11 @@ class EditorActivity : AppCompatActivity() {
         binding.tvProcessStatus.text = when (quickTool) {
             "FLIP" -> "Flipping video…"
             "COMPRESS" -> "Compressing video…"
+            "TRIM" -> "Trimming video…"
+            "SPEED" -> "Changing speed (${speedFactor}x)…"
+            "ADD_TEXT" -> "Adding watermark text…"
+            "TO_AUDIO" -> "Extracting audio…"
+            "REVERSE" -> "Reversing video…"
             else -> getString(R.string.removing_watermark)
         }
 
@@ -490,6 +636,13 @@ class EditorActivity : AppCompatActivity() {
             boxes = pixelBoxes,
             durationMs = videoDurationMs,
             quickToolCommand = resolvedQuickCmd,
+            hasAudio = videoHasAudio,
+            trimStartSec = trimStart,
+            trimDurationSec = trimDur,
+            speedFactor = speedFactor,
+            overlayPngPath = pngFile?.absolutePath,
+            overlayX = overlayX,
+            overlayY = overlayY,
             onProgress = { pct ->
                 runOnUiThread {
                     binding.circularProgress.progress = pct
@@ -497,17 +650,27 @@ class EditorActivity : AppCompatActivity() {
                 }
             },
             onComplete = { success, error ->
+                pngFile?.delete()
                 if (success) {
                     lifecycleScope.launch {
                         val saved = withContext(Dispatchers.IO) {
-                            val uri = GalleryHelper.saveVideoToGallery(this@EditorActivity, tempOut, finalName)
+                            val uri = if (isAudioOutput) {
+                                GalleryHelper.saveAudioToMusic(this@EditorActivity, tempOut, finalName)
+                            } else {
+                                GalleryHelper.saveVideoToGallery(this@EditorActivity, tempOut, finalName)
+                            }
                             tempOut.delete()
                             uri
                         }
                         savedOutputUri = saved
                         binding.circularProgress.progress = 100
                         binding.tvPercent.text = "100%"
-                        binding.tvProcessStatus.text = "Done! Saved to Gallery"
+                        binding.tvProcessStatus.text = if (isAudioOutput) {
+                            "Saved to Music / VisionWatermark"
+                        } else {
+                            "Done! Saved to Gallery"
+                        }
+                        binding.tvSavedLabel.text = if (isAudioOutput) "Saved to Music" else getString(R.string.saved_to_gallery)
                         binding.btnCancelProcess.visibility = View.GONE
                         binding.resultCard.visibility = View.VISIBLE
                     }

@@ -170,6 +170,61 @@ object GalleryHelper {
         context.startActivity(Intent.createChooser(intent, "Share video"))
     }
 
+
+    fun saveAudioToMusic(context: Context, sourceFile: File, displayName: String): Uri? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
+                    put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")
+                    put(
+                        MediaStore.Audio.Media.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_MUSIC}/$EXPORT_FOLDER_NAME"
+                    )
+                    put(MediaStore.Audio.Media.IS_PENDING, 1)
+                }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: return null
+                resolver.openOutputStream(uri)?.use { out ->
+                    sourceFile.inputStream().use { inp -> inp.copyTo(out, bufferSize = 64 * 1024) }
+                }
+                values.clear()
+                values.put(MediaStore.Audio.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                uri
+            } else {
+                val musicDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
+                    EXPORT_FOLDER_NAME
+                )
+                if (!musicDir.exists()) musicDir.mkdirs()
+                val dest = File(musicDir, displayName)
+                sourceFile.copyTo(dest, overwrite = true)
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", dest)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun playAudio(context: Context, uri: Uri) {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "audio/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Play audio"))
+    }
+
+    fun shareAudio(context: Context, uri: Uri) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "audio/*"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share audio"))
+    }
+
     fun formatDuration(ms: Long): String {
         val totalSec = (ms / 1000).coerceAtLeast(0)
         val m = totalSec / 60

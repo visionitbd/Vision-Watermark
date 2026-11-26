@@ -73,9 +73,9 @@
             android:orientation="vertical"
             android:paddingHorizontal="20dp"
             android:paddingTop="8dp"
-            android:paddingBottom="20dp">
+            android:paddingBottom="24dp">
 
-            <!-- Hero Card: Remove a watermark + Matching Choose Video & Choose Photo buttons -->
+            <!-- Hero Card -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -99,7 +99,6 @@
                     android:textColor="#D6E6FF"
                     android:textSize="13sp" />
 
-                <!-- Both Choose Video & Choose Photo have matching crisp white pill style -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="52dp"
@@ -137,7 +136,7 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- All Tools Section -->
+            <!-- All Tools (3 Balanced Rows of 4 = 12 Tools) -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -263,11 +262,11 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Row 2: Blur, Flip, Compress -->
+            <!-- Row 2: Blur, Flip, Compress, Trim -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
+                android:layout_marginTop="20dp"
                 android:orientation="horizontal">
 
                 <LinearLayout
@@ -351,56 +350,148 @@
                         android:textSize="12sp" />
                 </LinearLayout>
 
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="1dp"
-                    android:layout_weight="1" />
-            </LinearLayout>
-
-            <!-- Quick Recent Preview Card -->
-            <LinearLayout
-                android:id="@+id/quickRecentBanner"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:background="@drawable/bg_glass_card"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="16dp">
-
                 <LinearLayout
+                    android:id="@+id/toolTrim"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
                     android:orientation="vertical">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="My Saved Exports"
-                        android:textColor="@color/text_primary"
-                        android:textSize="15sp"
-                        android:textStyle="bold" />
+                    <ImageView
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:background="@drawable/bg_tool_circle"
+                        android:contentDescription="Trim"
+                        android:padding="15dp"
+                        android:src="@drawable/ic_tool_trim" />
 
                     <TextView
-                        android:id="@+id/tvExportSummary"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="View &amp; share your cleaned videos"
+                        android:layout_marginTop="8dp"
+                        android:text="Trim"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Row 3: Speed, Add Text, To MP3, Reverse -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/toolSpeed"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:background="@drawable/bg_tool_circle"
+                        android:contentDescription="Speed"
+                        android:padding="15dp"
+                        android:src="@drawable/ic_tool_speed" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Speed"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
                 </LinearLayout>
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:id="@+id/toolAddLogo"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="Open ›"
-                    android:textColor="@color/cyan_accent"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:background="@drawable/bg_tool_circle"
+                        android:contentDescription="Add Text"
+                        android:padding="15dp"
+                        android:src="@drawable/ic_tool_add_logo" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Add Text"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/toolAudio"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:background="@drawable/bg_tool_circle"
+                        android:contentDescription="To MP3"
+                        android:padding="15dp"
+                        android:src="@drawable/ic_tool_audio" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="To MP3"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/toolReverse"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:background="@drawable/bg_tool_circle"
+                        android:contentDescription="Reverse"
+                        android:padding="15dp"
+                        android:src="@drawable/ic_tool_reverse" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Reverse"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
             </LinearLayout>
 
         </LinearLayout>
@@ -440,7 +531,7 @@
             android:visibility="gone" />
     </FrameLayout>
 
-    <!-- Bottom Navigation Bar -->
+    <!-- Bottom Navigation Bar with Upgraded Video Library Icon -->
     <LinearLayout
         android:id="@+id/bottomNav"
         android:layout_width="0dp"
@@ -496,7 +587,7 @@
                 android:layout_width="22dp"
                 android:layout_height="22dp"
                 android:contentDescription="@string/tab_my_videos"
-                android:src="@drawable/ic_play"
+                android:src="@drawable/ic_my_videos"
                 app:tint="@color/text_secondary" />
 
             <TextView

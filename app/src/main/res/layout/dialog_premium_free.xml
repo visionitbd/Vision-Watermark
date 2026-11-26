@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_premium_dialog"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="26dp">
+
+    <ImageView
+        android:layout_width="68dp"
+        android:layout_height="68dp"
+        android:background="@drawable/bg_crown_glow"
+        android:contentDescription="Pro"
+        android:padding="17dp"
+        android:src="@drawable/ic_crown" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Vision Watermark Pro"
+        android:textColor="@color/text_primary"
+        android:textSize="21sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_pill_button"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="5dp"
+        android:text="আপাতত সম্পূর্ণ ফ্রি!"
+        android:textColor="#FFB82E"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center"
+        android:lineSpacingExtra="4dp"
+        android:text="বর্তমানে কোনো প্রিমিয়াম সাবস্ক্রিপশন ছাড়াই অ্যাপের সব প্রো ফিচার সম্পূর্ণ ফ্রিতে ব্যবহার করুন।"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/btnClosePremium"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="22dp"
+        android:background="@drawable/bg_primary_gradient_btn"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:text="ব্যবহার শুরু করুন"
+        android:textColor="#04101D"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+</LinearLayout>

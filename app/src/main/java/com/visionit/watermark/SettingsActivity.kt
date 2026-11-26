@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.visionit.watermark.databinding.ActivitySettingsBinding
+import com.visionit.watermark.util.PremiumPopupHelper
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -16,14 +17,11 @@ class SettingsActivity : AppCompatActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.tvVersion.text = "Version 6.0"
         binding.btnBack.setOnClickListener { finish() }
 
         binding.btnGetPremium.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("Vision Watermark Pro")
-                .setMessage("আপাতত সম্পূর্ণ ফ্রি!\n\nবর্তমানে কোনো প্রিমিয়াম সাবস্ক্রিপশন ছাড়াই অ্যাপের সব প্রো ফিচার সম্পূর্ণ ফ্রিতে ব্যবহার করুন।")
-                .setPositiveButton("বন্ধ করুন", null)
-                .show()
+            PremiumPopupHelper.show(this)
         }
 
         binding.rowShare.setOnClickListener {

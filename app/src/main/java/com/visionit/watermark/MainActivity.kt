@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -15,6 +14,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.visionit.watermark.databinding.ActivityMainBinding
 import com.visionit.watermark.ui.RecentExportsAdapter
 import com.visionit.watermark.util.GalleryHelper
+import com.visionit.watermark.util.PremiumPopupHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -94,36 +94,36 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         binding.btnPremiumCrown.setOnClickListener {
-            showFreePremiumPopup()
+            PremiumPopupHelper.show(this)
         }
 
         // Hero buttons
         binding.btnChooseVideo.setOnClickListener { openVideoPicker("SMART_ERASE", null) }
         binding.btnChoosePhoto.setOnClickListener { openPhotoPicker("SMART_ERASE") }
 
-        // All Tools grid
+        // Row 1
         binding.toolWatermark.setOnClickListener { openVideoPicker("SMART_ERASE", null) }
         binding.toolPhotoErase.setOnClickListener { openPhotoPicker("SMART_ERASE") }
         binding.toolEditText.setOnClickListener { openPhotoPicker("EDIT_TEXT") }
         binding.toolCrop.setOnClickListener { openVideoPicker("CROP", null) }
+
+        // Row 2
         binding.toolBlur.setOnClickListener { openVideoPicker("BLUR", null) }
         binding.toolFlip.setOnClickListener { openVideoPicker("SMART_ERASE", "FLIP") }
         binding.toolCompress.setOnClickListener { openVideoPicker("SMART_ERASE", "COMPRESS") }
+        binding.toolTrim.setOnClickListener { openVideoPicker("SMART_ERASE", "TRIM") }
 
-        // Quick banner & bottom navigation
-        binding.quickRecentBanner.setOnClickListener { switchTab(showHome = false) }
+        // Row 3
+        binding.toolSpeed.setOnClickListener { openVideoPicker("SMART_ERASE", "SPEED") }
+        binding.toolAddLogo.setOnClickListener { openVideoPicker("SMART_ERASE", "ADD_TEXT") }
+        binding.toolAudio.setOnClickListener { openVideoPicker("SMART_ERASE", "TO_AUDIO") }
+        binding.toolReverse.setOnClickListener { openVideoPicker("SMART_ERASE", "REVERSE") }
+
+        // Bottom nav
         binding.navHome.setOnClickListener { switchTab(showHome = true) }
         binding.navVideos.setOnClickListener { switchTab(showHome = false) }
 
         requestGalleryPermissionsIfNeeded()
-    }
-
-    private fun showFreePremiumPopup() {
-        AlertDialog.Builder(this)
-            .setTitle("Vision Watermark Pro")
-            .setMessage("আপাতত সম্পূর্ণ ফ্রি!\n\nবর্তমানে কোনো প্রিমিয়াম সাবস্ক্রিপশন ছাড়াই অ্যাপের সব প্রো ফিচার সম্পূর্ণ ফ্রিতে ব্যবহার করুন।")
-            .setPositiveButton("বন্ধ করুন", null)
-            .show()
     }
 
     private fun openVideoPicker(initialMode: String, quickTool: String?) {
@@ -179,11 +179,6 @@ class MainActivity : AppCompatActivity() {
             adapter.submitList(exports)
             binding.tvEmptyExports.visibility = if (exports.isEmpty()) View.VISIBLE else View.GONE
             binding.rvRecentExports.visibility = if (exports.isEmpty()) View.GONE else View.VISIBLE
-            binding.tvExportSummary.text = if (exports.isEmpty()) {
-                "View & share your cleaned videos"
-            } else {
-                "${exports.size} saved video${if (exports.size > 1) "s" else ""} ready to play or share"
-            }
         }
     }
 }
