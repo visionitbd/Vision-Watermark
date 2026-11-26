@@ -80,12 +80,19 @@ class PhotoEditorActivity : AppCompatActivity() {
 
         binding.btnAddArea.setOnClickListener {
             if (isEditTextMode) {
-                // Allow manual box replace for non-English / Bengali / stylized text!
-                val bmp = currentBitmap ?: return@setOnClickListener
-                val boxes = binding.photoOverlay.computePixelBoxes(bmp.width, bmp.height)
-                if (boxes.isNotEmpty()) {
-                    val b = boxes.first()
-                    showReplaceTextDialog("", Rect(b.x, b.y, b.x + b.w, b.y + b.h))
+                // Step 1: Show draggable box over any text; Step 2: Tap again to replace text inside box
+                if (binding.photoOverlay.visibility != View.VISIBLE) {
+                    binding.photoOverlay.visibility = View.VISIBLE
+                    binding.textOverlay.visibility = View.GONE
+                    binding.btnAddArea.text = "Replace Box"
+                    binding.tvEditTextHint.text = "Place box over any text, then tap 'Replace Box'"
+                } else {
+                    val bmp = currentBitmap ?: return@setOnClickListener
+                    val boxes = binding.photoOverlay.computePixelBoxes(bmp.width, bmp.height)
+                    if (boxes.isNotEmpty()) {
+                        val b = boxes.first()
+                        showReplaceTextDialog("", Rect(b.x, b.y, b.x + b.w, b.y + b.h))
+                    }
                 }
                 return@setOnClickListener
             }
@@ -284,39 +291,59 @@ class PhotoEditorActivity : AppCompatActivity() {
             val updated = withContext(Dispatchers.Default) {
                 val out = src.copy(Bitmap.Config.ARGB_8888, true)
 
-                // Sample dominant foreground text color BEFORE erasing if Auto selected
-                val textColor = if (chosenColor != 0) chosenColor else sampleTextColor(out, box)
+                // Sample exact background & foreground ink color BEFORE erasing
+                val (bgColor, bgIsUniform) = sampleBorderBackground(out, box)
+                val textColor = if (chosenColor != 0) chosenColor else sampleAccurateTextColor(out, box, bgColor)
+                val autoBold = if (chosenColor == 0) detectBoldness(out, box, bgColor) else isBold
 
-                // 1. Smart-erase original text cleanly
-                val pad = 4
+                // 1. Cleanly remove original text (crisp uniform fill on solid cards, delogo on photo textures)
+                val pad = 3
                 val rx = (box.left - pad).coerceAtLeast(1)
                 val ry = (box.top - pad).coerceAtLeast(1)
                 val rw = (box.width() + pad * 2).coerceAtMost(out.width - rx - 2)
                 val rh = (box.height() + pad * 2).coerceAtMost(out.height - ry - 2)
                 if (rw > 2 && rh > 2) {
-                    delogoRegion(out, rx, ry, rw, rh)
+                    if (bgIsUniform) {
+                        val c = Canvas(out)
+                        val fillP = Paint().apply { color = bgColor; style = Paint.Style.FILL }
+                        c.drawRect(rx.toFloat(), ry.toFloat(), (rx + rw).toFloat(), (ry + rh).toFloat(), fillP)
+                    } else {
+                        delogoRegion(out, rx, ry, rw, rh)
+                    }
                 }
 
-                // 2. Render new edited text cleanly fitted inside the original bounding box
+                // 2. Render replacement text matching exact original height, left alignment, weight & color
                 if (newText.isNotBlank()) {
                     val canvas = Canvas(out)
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
                         color = textColor
-                        typeface = if (isBold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                        textAlign = Paint.Align.CENTER
+                        typeface = Typeface.create(
+                            Typeface.SANS_SERIF,
+                            if (autoBold) Typeface.BOLD else Typeface.NORMAL
+                        )
+                        textAlign = Paint.Align.LEFT
                     }
-                    // Auto-fit font size to box height & width
-                    var textSizePx = (box.height() * 0.88f).coerceAtLeast(16f)
-                    paint.textSize = textSizePx
+
+                    // Match cap-height precisely to original bounding box height
+                    val targetHeight = (box.height() * 0.82f).coerceAtLeast(14f)
+                    paint.textSize = targetHeight
+                    val bounds = Rect()
+                    paint.getTextBounds("Ag", 0, 2, bounds)
+                    if (bounds.height() > 0) {
+                        paint.textSize = (targetHeight * (box.height().toFloat() / bounds.height().toFloat()) * 0.88f)
+                            .coerceAtLeast(14f)
+                    }
+
+                    // Keep within image right edge if new text is much longer
+                    val maxW = (out.width - box.left - 16).toFloat().coerceAtLeast(box.width().toFloat())
                     val measuredW = paint.measureText(newText)
-                    val maxAllowedW = (box.width() * 1.15f).coerceAtLeast(40f)
-                    if (measuredW > maxAllowedW) {
-                        textSizePx *= (maxAllowedW / measuredW)
-                        paint.textSize = textSizePx.coerceAtLeast(12f)
+                    if (measuredW > maxW) {
+                        paint.textSize = (paint.textSize * (maxW / measuredW)).coerceAtLeast(12f)
                     }
+
                     val fm = paint.fontMetrics
                     val baselineY = box.exactCenterY() - (fm.ascent + fm.descent) / 2f
-                    canvas.drawText(newText, box.exactCenterX(), baselineY, paint)
+                    canvas.drawText(newText, box.left.toFloat(), baselineY, paint)
                 }
                 out
             }
@@ -329,33 +356,99 @@ class PhotoEditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun sampleTextColor(bmp: Bitmap, box: Rect): Int {
-        // Compare border brightness vs interior extrema to pick clean contrasting text color
-        val cx = box.centerX().coerceIn(0, bmp.width - 1)
-        val topY = (box.top - 3).coerceIn(0, bmp.height - 1)
-        val bgPx = bmp.getPixel(cx, topY)
-        val bgLum = 0.299 * Color.red(bgPx) + 0.587 * Color.green(bgPx) + 0.114 * Color.blue(bgPx)
+    private fun sampleBorderBackground(bmp: Bitmap, box: Rect): Pair<Int, Boolean> {
+        val samples = mutableListOf<Int>()
+        val topY = (box.top - 4).coerceIn(0, bmp.height - 1)
+        val botY = (box.bottom + 4).coerceIn(0, bmp.height - 1)
+        val leftX = (box.left - 4).coerceIn(0, bmp.width - 1)
+        val rightX = (box.right + 4).coerceIn(0, bmp.width - 1)
 
-        var bestPx = if (bgLum > 128) Color.BLACK else Color.WHITE
-        var maxDiff = 0.0
-        val stepX = (box.width() / 10).coerceAtLeast(1)
-        val stepY = (box.height() / 6).coerceAtLeast(1)
+        val stepX = (box.width() / 8).coerceAtLeast(1)
+        var x = box.left.coerceIn(0, bmp.width - 1)
+        while (x <= box.right.coerceIn(0, bmp.width - 1)) {
+            samples.add(bmp.getPixel(x, topY))
+            samples.add(bmp.getPixel(x, botY))
+            x += stepX
+        }
+        samples.add(bmp.getPixel(leftX, box.centerY().coerceIn(0, bmp.height - 1)))
+        samples.add(bmp.getPixel(rightX, box.centerY().coerceIn(0, bmp.height - 1)))
+
+        val rs = samples.map { Color.red(it) }.sorted()
+        val gs = samples.map { Color.green(it) }.sorted()
+        val bs = samples.map { Color.blue(it) }.sorted()
+        val medR = rs[rs.size / 2]
+        val medG = gs[gs.size / 2]
+        val medB = bs[bs.size / 2]
+
+        // Check if border is visually uniform (e.g., solid UI card/background)
+        var maxSpread = 0
+        for (px in samples) {
+            val spread = kotlin.math.abs(Color.red(px) - medR) +
+                kotlin.math.abs(Color.green(px) - medG) +
+                kotlin.math.abs(Color.blue(px) - medB)
+            if (spread > maxSpread) maxSpread = spread
+        }
+        return Color.rgb(medR, medG, medB) to (maxSpread < 55)
+    }
+
+    private fun sampleAccurateTextColor(bmp: Bitmap, box: Rect, bgColor: Int): Int {
+        val bgR = Color.red(bgColor)
+        val bgG = Color.green(bgColor)
+        val bgB = Color.blue(bgColor)
+        val candidates = mutableListOf<Pair<Int, Int>>()
+
+        val stepX = (box.width() / 16).coerceAtLeast(1)
+        val stepY = (box.height() / 10).coerceAtLeast(1)
         var y = box.top.coerceAtLeast(0)
         while (y < box.bottom.coerceAtMost(bmp.height)) {
             var x = box.left.coerceAtLeast(0)
             while (x < box.right.coerceAtMost(bmp.width)) {
                 val px = bmp.getPixel(x, y)
-                val lum = 0.299 * Color.red(px) + 0.587 * Color.green(px) + 0.114 * Color.blue(px)
-                val diff = kotlin.math.abs(lum - bgLum)
-                if (diff > maxDiff) {
-                    maxDiff = diff
-                    bestPx = px
+                val diff = kotlin.math.abs(Color.red(px) - bgR) +
+                    kotlin.math.abs(Color.green(px) - bgG) +
+                    kotlin.math.abs(Color.blue(px) - bgB)
+                if (diff > 60) {
+                    candidates.add(diff to px)
                 }
                 x += stepX
             }
             y += stepY
         }
-        return bestPx
+        if (candidates.isEmpty()) {
+            val lum = 0.299 * bgR + 0.587 * bgG + 0.114 * bgB
+            return if (lum > 128) Color.BLACK else Color.WHITE
+        }
+        // Take top 25% strongest-contrast ink pixels and compute median RGB for exact color match
+        val topInk = candidates.sortedByDescending { it.first }.take((candidates.size / 4).coerceAtLeast(1))
+        val r = topInk.map { Color.red(it.second) }.sorted()[topInk.size / 2]
+        val g = topInk.map { Color.green(it.second) }.sorted()[topInk.size / 2]
+        val b = topInk.map { Color.blue(it.second) }.sorted()[topInk.size / 2]
+        return Color.rgb(r, g, b)
+    }
+
+    private fun detectBoldness(bmp: Bitmap, box: Rect, bgColor: Int): Boolean {
+        val bgR = Color.red(bgColor)
+        val bgG = Color.green(bgColor)
+        val bgB = Color.blue(bgColor)
+        var total = 0
+        var ink = 0
+        val stepX = (box.width() / 20).coerceAtLeast(1)
+        val stepY = (box.height() / 10).coerceAtLeast(1)
+        var y = box.top.coerceAtLeast(0)
+        while (y < box.bottom.coerceAtMost(bmp.height)) {
+            var x = box.left.coerceAtLeast(0)
+            while (x < box.right.coerceAtMost(bmp.width)) {
+                val px = bmp.getPixel(x, y)
+                val diff = kotlin.math.abs(Color.red(px) - bgR) +
+                    kotlin.math.abs(Color.green(px) - bgG) +
+                    kotlin.math.abs(Color.blue(px) - bgB)
+                total++
+                if (diff > 85) ink++
+                x += stepX
+            }
+            y += stepY
+        }
+        return total > 0 && (ink.toFloat() / total.toFloat()) > 0.28f
     }
 
     private fun loadPhoto(uri: Uri) {

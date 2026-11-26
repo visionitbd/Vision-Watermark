@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -88,6 +89,14 @@ class MainActivity : AppCompatActivity() {
         binding.rvRecentExports.layoutManager = LinearLayoutManager(this)
         binding.rvRecentExports.adapter = adapter
 
+        // Top bar Settings & Premium Crown
+        binding.btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        binding.btnPremiumCrown.setOnClickListener {
+            showFreePremiumPopup()
+        }
+
         // Hero buttons
         binding.btnChooseVideo.setOnClickListener { openVideoPicker("SMART_ERASE", null) }
         binding.btnChoosePhoto.setOnClickListener { openPhotoPicker("SMART_ERASE") }
@@ -107,6 +116,14 @@ class MainActivity : AppCompatActivity() {
         binding.navVideos.setOnClickListener { switchTab(showHome = false) }
 
         requestGalleryPermissionsIfNeeded()
+    }
+
+    private fun showFreePremiumPopup() {
+        AlertDialog.Builder(this)
+            .setTitle("Vision Watermark Pro")
+            .setMessage("আপাতত সম্পূর্ণ ফ্রি!\n\nবর্তমানে কোনো প্রিমিয়াম সাবস্ক্রিপশন ছাড়াই অ্যাপের সব প্রো ফিচার সম্পূর্ণ ফ্রিতে ব্যবহার করুন।")
+            .setPositiveButton("বন্ধ করুন", null)
+            .show()
     }
 
     private fun openVideoPicker(initialMode: String, quickTool: String?) {

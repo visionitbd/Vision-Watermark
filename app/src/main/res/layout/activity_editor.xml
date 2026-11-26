@@ -229,7 +229,7 @@
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center"
-                    android:text="↔ Horizontal"
+                    android:text="Left / Right"
                     android:textColor="#04101D"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -244,7 +244,7 @@
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center"
-                    android:text="↕ Vertical"
+                    android:text="Up / Down"
                     android:textColor="@color/text_primary"
                     android:textSize="13sp"
                     android:textStyle="bold" />
