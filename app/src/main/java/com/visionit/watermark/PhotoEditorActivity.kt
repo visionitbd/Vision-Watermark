@@ -509,6 +509,67 @@ class PhotoEditorActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Exact Coons-patch bilinear gradient reconstruction from the 4 clean border edges
+     * (zero flat patch, zero blur). Reproduces both solid backgrounds and smooth gradients seamlessly.
+     */
+    private fun reconstructGradientBackground(bmp: Bitmap, x0: Int, y0: Int, w: Int, h: Int) {
+        val bw = bmp.width
+        val bh = bmp.height
+        val xStart = x0.coerceAtLeast(2)
+        val yStart = y0.coerceAtLeast(2)
+        val xEnd = (x0 + w).coerceAtMost(bw - 3)
+        val yEnd = (y0 + h).coerceAtMost(bh - 3)
+        val rw = (xEnd - xStart).coerceAtLeast(1)
+        val rh = (yEnd - yStart).coerceAtLeast(1)
+
+        val pixels = IntArray(bw * bh)
+        bmp.getPixels(pixels, 0, bw, 0, 0, bw, bh)
+
+        for (y in yStart..yEnd) {
+            val wy = (y - yStart).toFloat() / rh.toFloat()
+            val pLeft = pixels[y * bw + (xStart - 2)]
+            val pRight = pixels[y * bw + (xEnd + 2)]
+            for (x in xStart..xEnd) {
+                val wx = (x - xStart).toFloat() / rw.toFloat()
+                val pTop = pixels[(yStart - 2) * bw + x]
+                val pBot = pixels[(yEnd + 2) * bw + x]
+
+                val rV = Color.red(pTop) * (1f - wy) + Color.red(pBot) * wy
+                val gV = Color.green(pTop) * (1f - wy) + Color.green(pBot) * wy
+                val bV = Color.blue(pTop) * (1f - wy) + Color.blue(pBot) * wy
+
+                val rH = Color.red(pLeft) * (1f - wx) + Color.red(pRight) * wx
+                val gH = Color.green(pLeft) * (1f - wx) + Color.green(pRight) * wx
+                val bH = Color.blue(pLeft) * (1f - wx) + Color.blue(pRight) * wx
+
+                val pTL = pixels[(yStart - 2) * bw + (xStart - 2)]
+                val pTR = pixels[(yStart - 2) * bw + (xEnd + 2)]
+                val pBL = pixels[(yEnd + 2) * bw + (xStart - 2)]
+                val pBR = pixels[(yEnd + 2) * bw + (xEnd + 2)]
+
+                val rC = (1f - wx) * (1f - wy) * Color.red(pTL) +
+                    wx * (1f - wy) * Color.red(pTR) +
+                    (1f - wx) * wy * Color.red(pBL) +
+                    wx * wy * Color.red(pBR)
+                val gC = (1f - wx) * (1f - wy) * Color.green(pTL) +
+                    wx * (1f - wy) * Color.green(pTR) +
+                    (1f - wx) * wy * Color.green(pBL) +
+                    wx * wy * Color.green(pBR)
+                val bC = (1f - wx) * (1f - wy) * Color.blue(pTL) +
+                    wx * (1f - wy) * Color.blue(pTR) +
+                    (1f - wx) * wy * Color.blue(pBL) +
+                    wx * wy * Color.blue(pBR)
+
+                val r = (rH + rV - rC).toInt().coerceIn(0, 255)
+                val g = (gH + gV - gC).toInt().coerceIn(0, 255)
+                val b = (bH + bV - bC).toInt().coerceIn(0, 255)
+                pixels[y * bw + x] = Color.rgb(r, g, b)
+            }
+        }
+        bmp.setPixels(pixels, 0, bw, 0, 0, bw, bh)
+    }
+
     private fun delogoRegion(bmp: Bitmap, x0: Int, y0: Int, w: Int, h: Int) {
         val bw = bmp.width
         val bh = bmp.height
