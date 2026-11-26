@@ -3,7 +3,7 @@
     <string name="launcher_name">V-Watermark</string>
     <string name="app_title">Vision Watermark</string>
     <string name="hero_title">Remove a watermark</string>
-    <string name="hero_subtitle">Box it, time it, export it.</string>
+    <string name="hero_subtitle">Box it, time it, export it, video &amp; photo</string>
     <string name="choose_video">Choose Video</string>
     <string name="choose_photo">Choose Photo</string>
     <string name="all_tools">All tools</string>
@@ -13,6 +13,7 @@
     <string name="add_area">+ Add</string>
     <string name="export">Export</string>
     <string name="mode_smart_erase">Smart Erase</string>
+    <string name="mode_edit_text">Edit Text</string>
     <string name="mode_blur">Blur</string>
     <string name="mode_crop">Crop</string>
     <string name="removing_watermark">Removing watermark…</string>

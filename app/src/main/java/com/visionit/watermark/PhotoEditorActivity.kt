@@ -2,15 +2,30 @@ package com.visionit.watermark
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.visionit.watermark.databinding.ActivityPhotoEditorBinding
 import com.visionit.watermark.model.RemovalMode
+import com.visionit.watermark.ui.DetectedTextOverlayView
 import com.visionit.watermark.util.GalleryHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -23,6 +38,7 @@ class PhotoEditorActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PHOTO_URI = "extra_photo_uri"
+        const val EXTRA_INITIAL_MODE = "extra_initial_mode"
         private const val MAX_BOXES = 3
     }
 
@@ -30,6 +46,8 @@ class PhotoEditorActivity : AppCompatActivity() {
     private var currentBitmap: Bitmap? = null
     private val bitmapUndoStack = ArrayDeque<Bitmap>()
     private var currentMode = RemovalMode.SMART_ERASE
+    private var isEditTextMode = false
+    private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +61,9 @@ class PhotoEditorActivity : AppCompatActivity() {
         }
 
         setupControls()
+        if (intent.getStringExtra(EXTRA_INITIAL_MODE) == "EDIT_TEXT") {
+            enterEditTextMode()
+        }
         loadPhoto(Uri.parse(uriStr))
     }
 
@@ -53,7 +74,21 @@ class PhotoEditorActivity : AppCompatActivity() {
             binding.tvAreaCount.text = "${binding.photoOverlay.getBoxes().size}/$MAX_BOXES"
         }
 
+        binding.textOverlay.onTextBlockTapped = { item ->
+            showReplaceTextDialog(item.text, item.box)
+        }
+
         binding.btnAddArea.setOnClickListener {
+            if (isEditTextMode) {
+                // Allow manual box replace for non-English / Bengali / stylized text!
+                val bmp = currentBitmap ?: return@setOnClickListener
+                val boxes = binding.photoOverlay.computePixelBoxes(bmp.width, bmp.height)
+                if (boxes.isNotEmpty()) {
+                    val b = boxes.first()
+                    showReplaceTextDialog("", Rect(b.x, b.y, b.x + b.w, b.y + b.h))
+                }
+                return@setOnClickListener
+            }
             if (currentMode == RemovalMode.CROP) {
                 Toast.makeText(this, "Crop mode uses 1 frame", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
@@ -73,20 +108,30 @@ class PhotoEditorActivity : AppCompatActivity() {
             if (bitmapUndoStack.isNotEmpty()) {
                 currentBitmap = bitmapUndoStack.removeLast()
                 binding.ivPhotoPreview.setImageBitmap(currentBitmap)
-                currentBitmap?.let {
-                    binding.photoOverlay.setVideoDimensions(it.width, it.height)
-                    binding.tvPhotoMeta.text = "${it.width}×${it.height}"
+                currentBitmap?.let { bmp ->
+                    binding.photoOverlay.setVideoDimensions(bmp.width, bmp.height)
+                    binding.textOverlay.setImageSize(bmp.width, bmp.height)
+                    binding.tvPhotoMeta.text = "${bmp.width}×${bmp.height}"
+                    if (isEditTextMode) scanTextInPhoto(bmp)
                 }
             } else if (!binding.photoOverlay.undo()) {
                 Toast.makeText(this, "Nothing to undo", Toast.LENGTH_SHORT).show()
             }
         }
 
-        binding.chipSmartErase.setOnClickListener { selectMode(RemovalMode.SMART_ERASE) }
-        binding.chipBlur.setOnClickListener { selectMode(RemovalMode.BLUR) }
-        binding.chipCrop.setOnClickListener { selectMode(RemovalMode.CROP) }
+        binding.chipSmartErase.setOnClickListener { selectBoxMode(RemovalMode.SMART_ERASE) }
+        binding.chipEditText.setOnClickListener { enterEditTextMode() }
+        binding.chipBlur.setOnClickListener { selectBoxMode(RemovalMode.BLUR) }
+        binding.chipCrop.setOnClickListener { selectBoxMode(RemovalMode.CROP) }
 
-        binding.btnApplyErase.setOnClickListener { applyPhotoEdit() }
+        binding.btnApplyErase.setOnClickListener {
+            if (isEditTextMode) {
+                // Re-scan text on photo
+                currentBitmap?.let { scanTextInPhoto(it) }
+            } else {
+                applyPhotoEdit()
+            }
+        }
 
         binding.btnSavePhoto.setOnClickListener {
             val bmp = currentBitmap ?: return@setOnClickListener
@@ -105,16 +150,212 @@ class PhotoEditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun selectMode(mode: RemovalMode) {
+    private fun styleModeChip(tv: TextView, active: Boolean) {
+        tv.setBackgroundResource(if (active) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
+        tv.setTextColor(if (active) Color.parseColor("#04101D") else Color.parseColor("#F4F8FF"))
+    }
+
+    private fun selectBoxMode(mode: RemovalMode) {
+        isEditTextMode = false
         currentMode = mode
         binding.photoOverlay.mode = mode
-        fun style(tv: TextView, active: Boolean) {
-            tv.setBackgroundResource(if (active) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
-            tv.setTextColor(if (active) Color.parseColor("#04101D") else Color.parseColor("#F4F8FF"))
+        binding.photoOverlay.visibility = View.VISIBLE
+        binding.textOverlay.visibility = View.GONE
+        binding.tvEditTextHint.visibility = View.GONE
+        binding.btnDeleteBox.visibility = View.VISIBLE
+        binding.tvAreaCount.visibility = View.VISIBLE
+        binding.btnAddArea.text = getString(R.string.add_area)
+        binding.btnApplyErase.text = if (mode == RemovalMode.CROP) "Crop Now" else "Erase Now"
+
+        styleModeChip(binding.chipSmartErase, mode == RemovalMode.SMART_ERASE)
+        styleModeChip(binding.chipEditText, false)
+        styleModeChip(binding.chipBlur, mode == RemovalMode.BLUR)
+        styleModeChip(binding.chipCrop, mode == RemovalMode.CROP)
+    }
+
+    private fun enterEditTextMode() {
+        isEditTextMode = true
+        binding.photoOverlay.visibility = View.GONE
+        binding.textOverlay.visibility = View.VISIBLE
+        binding.tvEditTextHint.visibility = View.VISIBLE
+        binding.tvEditTextHint.text = "Scanning text on photo…"
+        binding.btnDeleteBox.visibility = View.GONE
+        binding.tvAreaCount.visibility = View.GONE
+        binding.btnAddArea.text = "Manual Box"
+        binding.btnApplyErase.text = "Re-Scan"
+
+        styleModeChip(binding.chipSmartErase, false)
+        styleModeChip(binding.chipEditText, true)
+        styleModeChip(binding.chipBlur, false)
+        styleModeChip(binding.chipCrop, false)
+
+        currentBitmap?.let { scanTextInPhoto(it) }
+    }
+
+    private fun scanTextInPhoto(bmp: Bitmap) {
+        binding.textOverlay.setImageSize(bmp.width, bmp.height)
+        val image = InputImage.fromBitmap(bmp, 0)
+        textRecognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                val detected = mutableListOf<DetectedTextOverlayView.TextBlockItem>()
+                for (block in visionText.textBlocks) {
+                    for (line in block.lines) {
+                        val box = line.boundingBox
+                        if (box != null && line.text.isNotBlank()) {
+                            detected.add(DetectedTextOverlayView.TextBlockItem(line.text, box))
+                        }
+                    }
+                }
+                binding.textOverlay.setDetectedTexts(detected)
+                binding.tvEditTextHint.text = if (detected.isEmpty()) {
+                    "No Latin text auto-detected. Tap 'Manual Box' to edit any text."
+                } else {
+                    "Found ${detected.size} text line${if (detected.size > 1) "s" else ""} — tap any highlighted text to edit"
+                }
+            }
+            .addOnFailureListener {
+                binding.tvEditTextHint.text = "Tap 'Manual Box' to select & replace text"
+            }
+    }
+
+    private fun showReplaceTextDialog(initialText: String, targetBox: Rect) {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 16)
         }
-        style(binding.chipSmartErase, mode == RemovalMode.SMART_ERASE)
-        style(binding.chipBlur, mode == RemovalMode.BLUR)
-        style(binding.chipCrop, mode == RemovalMode.CROP)
+
+        val input = EditText(this).apply {
+            setText(initialText)
+            setSelection(initialText.length)
+            hint = "Enter new text (leave empty to erase)"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#94A8C9"))
+        }
+        container.addView(input)
+
+        val colorGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.HORIZONTAL
+            setPadding(0, 20, 0, 8)
+        }
+        val colors = listOf(
+            "Auto" to 0,
+            "White" to Color.WHITE,
+            "Black" to Color.BLACK,
+            "Yellow" to Color.parseColor("#FFD600"),
+            "Cyan" to Color.parseColor("#00E5FF")
+        )
+        colors.forEachIndexed { idx, (label, colorVal) ->
+            val rb = RadioButton(this).apply {
+                text = label
+                tag = colorVal
+                id = View.generateViewId()
+                textSize = 12f
+                setTextColor(Color.WHITE)
+                isChecked = idx == 0
+            }
+            colorGroup.addView(rb)
+        }
+        container.addView(colorGroup)
+
+        val boldCheck = CheckBox(this).apply {
+            text = "Bold text"
+            isChecked = true
+            setTextColor(Color.WHITE)
+        }
+        container.addView(boldCheck)
+
+        AlertDialog.Builder(this)
+            .setTitle("Edit Photo Text")
+            .setView(container)
+            .setPositiveButton("Apply") { _, _ ->
+                val newText = input.text.toString()
+                val checkedId = colorGroup.checkedRadioButtonId
+                val selectedBtn = colorGroup.findViewById<RadioButton>(checkedId)
+                val chosenColor = (selectedBtn?.tag as? Int) ?: 0
+                replaceTextInPhoto(targetBox, newText, chosenColor, boldCheck.isChecked)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun replaceTextInPhoto(box: Rect, newText: String, chosenColor: Int, isBold: Boolean) {
+        val src = currentBitmap ?: return
+        lifecycleScope.launch {
+            val updated = withContext(Dispatchers.Default) {
+                val out = src.copy(Bitmap.Config.ARGB_8888, true)
+
+                // Sample dominant foreground text color BEFORE erasing if Auto selected
+                val textColor = if (chosenColor != 0) chosenColor else sampleTextColor(out, box)
+
+                // 1. Smart-erase original text cleanly
+                val pad = 4
+                val rx = (box.left - pad).coerceAtLeast(1)
+                val ry = (box.top - pad).coerceAtLeast(1)
+                val rw = (box.width() + pad * 2).coerceAtMost(out.width - rx - 2)
+                val rh = (box.height() + pad * 2).coerceAtMost(out.height - ry - 2)
+                if (rw > 2 && rh > 2) {
+                    delogoRegion(out, rx, ry, rw, rh)
+                }
+
+                // 2. Render new edited text cleanly fitted inside the original bounding box
+                if (newText.isNotBlank()) {
+                    val canvas = Canvas(out)
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = textColor
+                        typeface = if (isBold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                        textAlign = Paint.Align.CENTER
+                    }
+                    // Auto-fit font size to box height & width
+                    var textSizePx = (box.height() * 0.88f).coerceAtLeast(16f)
+                    paint.textSize = textSizePx
+                    val measuredW = paint.measureText(newText)
+                    val maxAllowedW = (box.width() * 1.15f).coerceAtLeast(40f)
+                    if (measuredW > maxAllowedW) {
+                        textSizePx *= (maxAllowedW / measuredW)
+                        paint.textSize = textSizePx.coerceAtLeast(12f)
+                    }
+                    val fm = paint.fontMetrics
+                    val baselineY = box.exactCenterY() - (fm.ascent + fm.descent) / 2f
+                    canvas.drawText(newText, box.exactCenterX(), baselineY, paint)
+                }
+                out
+            }
+            if (bitmapUndoStack.size >= 10) bitmapUndoStack.removeFirst()
+            bitmapUndoStack.addLast(src)
+            currentBitmap = updated
+            binding.ivPhotoPreview.setImageBitmap(updated)
+            scanTextInPhoto(updated)
+            Toast.makeText(this@PhotoEditorActivity, "Text updated! Tap Save when done.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun sampleTextColor(bmp: Bitmap, box: Rect): Int {
+        // Compare border brightness vs interior extrema to pick clean contrasting text color
+        val cx = box.centerX().coerceIn(0, bmp.width - 1)
+        val topY = (box.top - 3).coerceIn(0, bmp.height - 1)
+        val bgPx = bmp.getPixel(cx, topY)
+        val bgLum = 0.299 * Color.red(bgPx) + 0.587 * Color.green(bgPx) + 0.114 * Color.blue(bgPx)
+
+        var bestPx = if (bgLum > 128) Color.BLACK else Color.WHITE
+        var maxDiff = 0.0
+        val stepX = (box.width() / 10).coerceAtLeast(1)
+        val stepY = (box.height() / 6).coerceAtLeast(1)
+        var y = box.top.coerceAtLeast(0)
+        while (y < box.bottom.coerceAtMost(bmp.height)) {
+            var x = box.left.coerceAtLeast(0)
+            while (x < box.right.coerceAtMost(bmp.width)) {
+                val px = bmp.getPixel(x, y)
+                val lum = 0.299 * Color.red(px) + 0.587 * Color.green(px) + 0.114 * Color.blue(px)
+                val diff = kotlin.math.abs(lum - bgLum)
+                if (diff > maxDiff) {
+                    maxDiff = diff
+                    bestPx = px
+                }
+                x += stepX
+            }
+            y += stepY
+        }
+        return bestPx
     }
 
     private fun loadPhoto(uri: Uri) {
@@ -136,7 +377,11 @@ class PhotoEditorActivity : AppCompatActivity() {
             currentBitmap = bmp
             binding.ivPhotoPreview.setImageBitmap(bmp)
             binding.photoOverlay.setVideoDimensions(bmp.width, bmp.height)
+            binding.textOverlay.setImageSize(bmp.width, bmp.height)
             binding.tvPhotoMeta.text = "${bmp.width}×${bmp.height}"
+            if (isEditTextMode) {
+                scanTextInPhoto(bmp)
+            }
         }
     }
 
@@ -171,14 +416,12 @@ class PhotoEditorActivity : AppCompatActivity() {
             currentBitmap = updated
             binding.ivPhotoPreview.setImageBitmap(updated)
             binding.photoOverlay.setVideoDimensions(updated.width, updated.height)
+            binding.textOverlay.setImageSize(updated.width, updated.height)
             binding.tvPhotoMeta.text = "${updated.width}×${updated.height}"
             Toast.makeText(this@PhotoEditorActivity, "Applied! Tap Save to export.", Toast.LENGTH_SHORT).show()
         }
     }
 
-    /**
-     * Fast bilinear boundary interpolation (same core principle as FFmpeg delogo) + gentle feathering.
-     */
     private fun delogoRegion(bmp: Bitmap, x0: Int, y0: Int, w: Int, h: Int) {
         val bw = bmp.width
         val bh = bmp.height
@@ -193,7 +436,6 @@ class PhotoEditorActivity : AppCompatActivity() {
         bmp.getPixels(pixels, 0, bw, 0, 0, bw, bh)
 
         for (y in yStart..yEnd) {
-            val topPx = pixels[(yStart - 1) * bw + xStart]
             val wy = (y - yStart).toFloat() / rh.toFloat()
             for (x in xStart..xEnd) {
                 val wx = (x - xStart).toFloat() / rw.toFloat()
@@ -210,7 +452,6 @@ class PhotoEditorActivity : AppCompatActivity() {
                 val gV = Color.green(pTop) * (1f - wy) + Color.green(pBot) * wy
                 val bV = Color.blue(pTop) * (1f - wy) + Color.blue(pBot) * wy
 
-                // Weight horizontal vs vertical by proximity to nearest edge
                 val distX = minOf(wx, 1f - wx) + 0.01f
                 val distY = minOf(wy, 1f - wy) + 0.01f
                 val weightH = distY / (distX + distY)
@@ -223,7 +464,6 @@ class PhotoEditorActivity : AppCompatActivity() {
             }
         }
         bmp.setPixels(pixels, 0, bw, 0, 0, bw, bh)
-        // Soft 2px smoothing pass so seam blends invisibly
         blurRegion(bmp, xStart, yStart, rw, rh, radius = 3)
     }
 
@@ -242,7 +482,6 @@ class PhotoEditorActivity : AppCompatActivity() {
         val tmp = IntArray(rw * rh)
         bmp.getPixels(src, 0, rw, xStart, yStart, rw, rh)
 
-        // Horizontal pass
         for (y in 0 until rh) {
             for (x in 0 until rw) {
                 var rSum = 0; var gSum = 0; var bSum = 0; var cnt = 0
@@ -254,7 +493,6 @@ class PhotoEditorActivity : AppCompatActivity() {
                 tmp[y * rw + x] = Color.rgb(rSum / cnt, gSum / cnt, bSum / cnt)
             }
         }
-        // Vertical pass
         for (y in 0 until rh) {
             for (x in 0 until rw) {
                 var rSum = 0; var gSum = 0; var bSum = 0; var cnt = 0
@@ -267,5 +505,10 @@ class PhotoEditorActivity : AppCompatActivity() {
             }
         }
         bmp.setPixels(src, 0, rw, xStart, yStart, rw, rh)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        textRecognizer.close()
     }
 }

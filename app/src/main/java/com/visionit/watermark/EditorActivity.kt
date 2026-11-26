@@ -50,6 +50,9 @@ class EditorActivity : AppCompatActivity() {
     private var videoDurationMs = 10_000L
     private var currentMode = RemovalMode.SMART_ERASE
     private var quickTool: String? = null
+    private var flipH = true
+    private var flipV = false
+    private var compressLevel = "COMPRESS_BALANCED"
     private var savedOutputUri: Uri? = null
     private var isSeeking = false
 
@@ -64,8 +67,10 @@ class EditorActivity : AppCompatActivity() {
                 binding.seekBar.progress = pos.toInt()
                 binding.tvCurrentTime.text = GalleryHelper.formatDuration(pos)
                 binding.tvTotalTime.text = "/ ${GalleryHelper.formatDuration(dur)}"
-                binding.watermarkOverlay.setCurrentPlayhead(pos)
-                binding.timelineView.setPlayhead(pos)
+                if (quickTool == null) {
+                    binding.watermarkOverlay.setCurrentPlayhead(pos)
+                    binding.timelineView.setPlayhead(pos)
+                }
             }
             handler.postDelayed(this, 60)
         }
@@ -85,24 +90,78 @@ class EditorActivity : AppCompatActivity() {
         quickTool = intent.getStringExtra(EXTRA_QUICK_TOOL)
 
         setupControls()
-
-        when (intent.getStringExtra(EXTRA_INITIAL_MODE)) {
-            "BLUR" -> selectMode(RemovalMode.BLUR)
-            "CROP" -> selectMode(RemovalMode.CROP)
-            else -> selectMode(RemovalMode.SMART_ERASE)
-        }
-
+        configureQuickToolIfNeeded()
         loadVideoMetadataAndPlayer()
+    }
 
-        if (quickTool != null) {
-            // Auto-trigger quick tool (Flip or Compress) immediately after metadata loads
-            binding.tvEditorHeader.text = if (quickTool == "FLIP") "Flip Video" else "Compress Video"
+    private fun configureQuickToolIfNeeded() {
+        when (quickTool) {
+            "FLIP" -> {
+                binding.tvEditorHeader.text = "Flip Video"
+                binding.modeChipsRow.visibility = View.GONE
+                binding.watermarkOverlay.visibility = View.GONE
+                binding.areaBarRow.visibility = View.GONE
+                binding.timelineCard.visibility = View.GONE
+                binding.flipControlsPanel.visibility = View.VISIBLE
+                applyFlipPreview()
+            }
+            "COMPRESS" -> {
+                binding.tvEditorHeader.text = "Compress Video"
+                binding.modeChipsRow.visibility = View.GONE
+                binding.watermarkOverlay.visibility = View.GONE
+                binding.areaBarRow.visibility = View.GONE
+                binding.timelineCard.visibility = View.GONE
+                binding.compressControlsPanel.visibility = View.VISIBLE
+                updateCompressChips()
+            }
+            else -> {
+                when (intent.getStringExtra(EXTRA_INITIAL_MODE)) {
+                    "BLUR" -> selectMode(RemovalMode.BLUR)
+                    "CROP" -> selectMode(RemovalMode.CROP)
+                    else -> selectMode(RemovalMode.SMART_ERASE)
+                }
+            }
         }
+    }
+
+    private fun applyFlipPreview() {
+        binding.playerView.scaleX = if (flipH) -1f else 1f
+        binding.playerView.scaleY = if (flipV) -1f else 1f
+        styleChip(binding.btnFlipHorizontal, flipH)
+        styleChip(binding.btnFlipVertical, flipV)
+    }
+
+    private fun updateCompressChips() {
+        styleChip(binding.btnCompLight, compressLevel == "COMPRESS_LIGHT")
+        styleChip(binding.btnCompBalanced, compressLevel == "COMPRESS_BALANCED")
+        styleChip(binding.btnCompMax, compressLevel == "COMPRESS_MAX")
+    }
+
+    private fun styleChip(view: TextView, active: Boolean) {
+        view.setBackgroundResource(if (active) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
+        view.setTextColor(if (active) Color.parseColor("#04101D") else Color.parseColor("#F4F8FF"))
     }
 
     private fun setupControls() {
         binding.btnBack.setOnClickListener { finish() }
-        binding.btnExport.setOnClickListener { startWatermarkRemoval() }
+        binding.btnExport.setOnClickListener { startProcessing() }
+
+        // Flip buttons
+        binding.btnFlipHorizontal.setOnClickListener {
+            flipH = !flipH
+            if (!flipH && !flipV) flipH = true
+            applyFlipPreview()
+        }
+        binding.btnFlipVertical.setOnClickListener {
+            flipV = !flipV
+            if (!flipH && !flipV) flipV = true
+            applyFlipPreview()
+        }
+
+        // Compress buttons
+        binding.btnCompLight.setOnClickListener { compressLevel = "COMPRESS_LIGHT"; updateCompressChips() }
+        binding.btnCompBalanced.setOnClickListener { compressLevel = "COMPRESS_BALANCED"; updateCompressChips() }
+        binding.btnCompMax.setOnClickListener { compressLevel = "COMPRESS_MAX"; updateCompressChips() }
 
         binding.watermarkOverlay.onBoxesChanged = {
             refreshAreaChipsAndTimeline()
@@ -141,8 +200,10 @@ class EditorActivity : AppCompatActivity() {
                     val pos = progress.toLong()
                     player?.seekTo(pos)
                     binding.tvCurrentTime.text = GalleryHelper.formatDuration(pos)
-                    binding.watermarkOverlay.setCurrentPlayhead(pos)
-                    binding.timelineView.setPlayhead(pos)
+                    if (quickTool == null) {
+                        binding.watermarkOverlay.setCurrentPlayhead(pos)
+                        binding.timelineView.setPlayhead(pos)
+                    }
                 }
             }
 
@@ -205,12 +266,6 @@ class EditorActivity : AppCompatActivity() {
     private fun selectMode(mode: RemovalMode) {
         currentMode = mode
         binding.watermarkOverlay.mode = mode
-
-        fun styleChip(view: TextView, active: Boolean) {
-            view.setBackgroundResource(if (active) R.drawable.bg_chip_selected else R.drawable.bg_chip_unselected)
-            view.setTextColor(if (active) Color.parseColor("#04101D") else Color.parseColor("#F4F8FF"))
-        }
-
         styleChip(binding.chipSmartErase, mode == RemovalMode.SMART_ERASE)
         styleChip(binding.chipBlur, mode == RemovalMode.BLUR)
         styleChip(binding.chipCrop, mode == RemovalMode.CROP)
@@ -319,7 +374,9 @@ class EditorActivity : AppCompatActivity() {
             binding.watermarkOverlay.setVideoDimensions(videoWidth, videoHeight)
             binding.watermarkOverlay.setVideoDuration(videoDurationMs)
 
-            extractFilmstripThumbnails()
+            if (quickTool == null) {
+                extractFilmstripThumbnails()
+            }
 
             val exo = ExoPlayer.Builder(this@EditorActivity).build().apply {
                 setMediaItem(MediaItem.fromUri(videoUri))
@@ -389,14 +446,28 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun startWatermarkRemoval() {
+    private fun startProcessing() {
         player?.pause()
         binding.btnPlayPause.setImageResource(R.drawable.ic_play)
 
         val pixelBoxes = binding.watermarkOverlay.computePixelBoxes(videoWidth, videoHeight)
         val tempOut = File(cacheDir, "vwatermark_${System.currentTimeMillis()}.mp4")
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val finalName = "VWatermark_$stamp.mp4"
+        val finalName = when (quickTool) {
+            "FLIP" -> "VWatermark_Flip_$stamp.mp4"
+            "COMPRESS" -> "VWatermark_Comp_$stamp.mp4"
+            else -> "VWatermark_$stamp.mp4"
+        }
+
+        val resolvedQuickCmd = when (quickTool) {
+            "FLIP" -> when {
+                flipH && flipV -> "FLIP_HV"
+                flipV -> "FLIP_V"
+                else -> "FLIP_H"
+            }
+            "COMPRESS" -> compressLevel
+            else -> null
+        }
 
         savedOutputUri = null
         binding.processingOverlay.visibility = View.VISIBLE
@@ -418,7 +489,7 @@ class EditorActivity : AppCompatActivity() {
             mode = currentMode,
             boxes = pixelBoxes,
             durationMs = videoDurationMs,
-            quickTool = quickTool,
+            quickToolCommand = resolvedQuickCmd,
             onProgress = { pct ->
                 runOnUiThread {
                     binding.circularProgress.progress = pct

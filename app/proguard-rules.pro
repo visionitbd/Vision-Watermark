@@ -7,3 +7,7 @@
 # Keep Media3 ExoPlayer classes
 -keep class androidx.media3.** { *; }
 -dontwarn androidx.media3.**
+
+# Keep ML Kit Text Recognition
+-keep class com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**

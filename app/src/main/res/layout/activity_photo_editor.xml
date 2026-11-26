@@ -39,7 +39,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Photo Watermark"
+                    android:text="Photo Studio"
                     android:textColor="@color/text_primary"
                     android:textSize="17sp"
                     android:textStyle="bold" />
@@ -49,7 +49,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="monospace"
-                    android:text="Instant Erase"
+                    android:text="Watermark &amp; Text Editor"
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp" />
             </LinearLayout>
@@ -69,7 +69,7 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Mode Selector -->
+        <!-- 4 Mode Chips: Smart Erase | Edit Text | Blur | Crop -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="34dp"
@@ -80,52 +80,82 @@
                 android:id="@+id/chipSmartErase"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="1.2"
+                android:layout_weight="1.15"
                 android:background="@drawable/bg_chip_selected"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:text="@string/mode_smart_erase"
+                android:text="Erase"
                 android:textColor="#04101D"
-                android:textSize="12sp"
+                android:textSize="11.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/chipEditText"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1.25"
+                android:background="@drawable/bg_chip_unselected"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="@string/mode_edit_text"
+                android:textColor="@color/text_primary"
+                android:textSize="11.5sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/chipBlur"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:layout_weight="0.9"
                 android:background="@drawable/bg_chip_unselected"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
                 android:text="@string/mode_blur"
                 android:textColor="@color/text_primary"
-                android:textSize="12sp"
+                android:textSize="11.5sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/chipCrop"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:layout_weight="0.9"
                 android:background="@drawable/bg_chip_unselected"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
                 android:text="@string/mode_crop"
                 android:textColor="@color/text_primary"
-                android:textSize="12sp"
+                android:textSize="11.5sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Photo Canvas + Ultra-Slim Box Overlay -->
+        <!-- Hint Banner for Edit Text Mode -->
+        <TextView
+            android:id="@+id/tvEditTextHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_glass_card"
+            android:gravity="center"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="7dp"
+            android:text="Tap any highlighted text on the photo to edit it"
+            android:textColor="@color/cyan_accent"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <!-- Photo Canvas + Overlays -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:layout_weight="1"
             android:background="#050810">
 
@@ -140,9 +170,15 @@
                 android:id="@+id/photoOverlay"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
+
+            <com.visionit.watermark.ui.DetectedTextOverlayView
+                android:id="@+id/textOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
         </FrameLayout>
 
-        <!-- Bottom Controls: Undo | Delete | Count (1/3) | + Add | Instant Erase Button -->
+        <!-- Bottom Controls -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="44dp"
@@ -173,7 +209,7 @@
                 android:id="@+id/tvAreaCount"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
+                android:layout_marginStart="8dp"
                 android:fontFamily="monospace"
                 android:text="1/3"
                 android:textColor="@color/text_secondary"
@@ -192,10 +228,10 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:paddingHorizontal="14dp"
+                android:paddingHorizontal="12dp"
                 android:text="@string/add_area"
                 android:textColor="@color/cyan_accent"
-                android:textSize="13sp"
+                android:textSize="12.5sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -207,10 +243,10 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:paddingHorizontal="18dp"
+                android:paddingHorizontal="16dp"
                 android:text="Erase Now"
                 android:textColor="#04101D"
-                android:textSize="13sp"
+                android:textSize="12.5sp"
                 android:textStyle="bold" />
         </LinearLayout>
 

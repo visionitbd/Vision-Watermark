@@ -24,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: RecentExportsAdapter
     private var pendingEditorMode: String = "SMART_ERASE"
     private var pendingQuickTool: String? = null
+    private var pendingPhotoMode: String = "SMART_ERASE"
 
     private val pickVideoLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -61,6 +62,7 @@ class MainActivity : AppCompatActivity() {
             }
             val intent = Intent(this, PhotoEditorActivity::class.java).apply {
                 putExtra(PhotoEditorActivity.EXTRA_PHOTO_URI, uri.toString())
+                putExtra(PhotoEditorActivity.EXTRA_INITIAL_MODE, pendingPhotoMode)
             }
             startActivity(intent)
         }
@@ -88,11 +90,12 @@ class MainActivity : AppCompatActivity() {
 
         // Hero buttons
         binding.btnChooseVideo.setOnClickListener { openVideoPicker("SMART_ERASE", null) }
-        binding.btnChoosePhoto.setOnClickListener { pickPhotoLauncher.launch(arrayOf("image/*")) }
+        binding.btnChoosePhoto.setOnClickListener { openPhotoPicker("SMART_ERASE") }
 
         // All Tools grid
         binding.toolWatermark.setOnClickListener { openVideoPicker("SMART_ERASE", null) }
-        binding.toolPhotoErase.setOnClickListener { pickPhotoLauncher.launch(arrayOf("image/*")) }
+        binding.toolPhotoErase.setOnClickListener { openPhotoPicker("SMART_ERASE") }
+        binding.toolEditText.setOnClickListener { openPhotoPicker("EDIT_TEXT") }
         binding.toolCrop.setOnClickListener { openVideoPicker("CROP", null) }
         binding.toolBlur.setOnClickListener { openVideoPicker("BLUR", null) }
         binding.toolFlip.setOnClickListener { openVideoPicker("SMART_ERASE", "FLIP") }
@@ -110,6 +113,11 @@ class MainActivity : AppCompatActivity() {
         pendingEditorMode = initialMode
         pendingQuickTool = quickTool
         pickVideoLauncher.launch(arrayOf("video/*"))
+    }
+
+    private fun openPhotoPicker(photoMode: String) {
+        pendingPhotoMode = photoMode
+        pickPhotoLauncher.launch(arrayOf("image/*"))
     }
 
     private fun switchTab(showHome: Boolean) {

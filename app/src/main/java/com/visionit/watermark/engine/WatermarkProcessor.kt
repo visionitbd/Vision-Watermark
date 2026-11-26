@@ -27,7 +27,7 @@ object WatermarkProcessor {
         mode: RemovalMode,
         boxes: List<WatermarkOverlayView.PixelBox>,
         durationMs: Long,
-        quickTool: String? = null,
+        quickToolCommand: String? = null,
         onProgress: (Int) -> Unit,
         onComplete: (Boolean, String?) -> Unit
     ) {
@@ -42,8 +42,8 @@ object WatermarkProcessor {
             return
         }
 
-        val commandArgs = if (quickTool != null) {
-            buildQuickToolArgs(inputPath, outputFile.absolutePath, quickTool)
+        val commandArgs = if (quickToolCommand != null) {
+            buildQuickToolArgs(inputPath, outputFile.absolutePath, quickToolCommand)
         } else {
             buildFfmpegArgs(inputPath, outputFile.absolutePath, mode, boxes)
         }
@@ -82,19 +82,47 @@ object WatermarkProcessor {
     private fun buildQuickToolArgs(
         inputPath: String,
         outputPath: String,
-        tool: String
+        cmd: String
     ): Array<String> {
-        return when (tool) {
-            "FLIP" -> arrayOf(
+        return when (cmd) {
+            "FLIP_H" -> arrayOf(
                 "-y", "-i", inputPath,
                 "-vf", "hflip",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
                 "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
                 outputPath
             )
-            "COMPRESS" -> arrayOf(
+            "FLIP_V" -> arrayOf(
                 "-y", "-i", inputPath,
+                "-vf", "vflip",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+                outputPath
+            )
+            "FLIP_HV" -> arrayOf(
+                "-y", "-i", inputPath,
+                "-vf", "hflip,vflip",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+                outputPath
+            )
+            "COMPRESS_LIGHT" -> arrayOf(
+                "-y", "-i", inputPath,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+                outputPath
+            )
+            "COMPRESS_BALANCED" -> arrayOf(
+                "-y", "-i", inputPath,
+                "-vf", "scale='min(1280,iw)':-2",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+                outputPath
+            )
+            "COMPRESS_MAX" -> arrayOf(
+                "-y", "-i", inputPath,
+                "-vf", "scale='min(854,iw)':-2",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
                 "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
                 outputPath
             )

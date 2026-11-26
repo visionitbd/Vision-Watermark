@@ -11,8 +11,8 @@ android {
         applicationId = "com.visionit.watermark"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "3.0"
+        versionCode = 4
+        versionName = "4.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -79,6 +79,9 @@ dependencies {
     // Smooth hardware-accelerated video playback (Media3 ExoPlayer)
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
+
+    // On-device OCR for Tap-to-Edit Photo Text
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 
     // AndroidX & Material 3
     implementation("androidx.core:core-ktx:1.15.0")
