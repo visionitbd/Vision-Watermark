@@ -13,6 +13,8 @@ import java.util.Locale
 
 object WatermarkProcessor {
 
+    data class TrimSegment(val startSec: Float, val endSec: Float)
+
     private var activeSession: FFmpegSession? = null
 
     fun cancelCurrent() {
@@ -29,8 +31,7 @@ object WatermarkProcessor {
         durationMs: Long,
         quickToolCommand: String? = null,
         hasAudio: Boolean = true,
-        trimStartSec: Float = 0f,
-        trimDurationSec: Float = 0f,
+        trimSegments: List<TrimSegment> = emptyList(),
         speedFactor: Float = 1f,
         overlayPngPath: String? = null,
         overlayX: Int = 20,
@@ -55,8 +56,7 @@ object WatermarkProcessor {
                 outputPath = outputFile.absolutePath,
                 cmd = quickToolCommand,
                 hasAudio = hasAudio,
-                trimStartSec = trimStartSec,
-                trimDurationSec = trimDurationSec,
+                trimSegments = trimSegments,
                 speedFactor = speedFactor,
                 overlayPngPath = overlayPngPath,
                 overlayX = overlayX,
@@ -66,9 +66,10 @@ object WatermarkProcessor {
             buildFfmpegArgs(inputPath, outputFile.absolutePath, mode, boxes)
         }
 
+        val totalTrimMs = trimSegments.sumOf { ((it.endSec - it.startSec) * 1000f).toLong().coerceAtLeast(100L) }
         val effectiveDurationMs = when (quickToolCommand) {
-            "TRIM" -> (trimDurationSec * 1000f).toLong().coerceAtLeast(500L)
-            "SPEED" -> (durationMs / speedFactor).toLong().coerceAtLeast(500L)
+            "TRIM" -> totalTrimMs.coerceAtLeast(500L)
+            "SPEED", "REVERSE" -> (durationMs / speedFactor).toLong().coerceAtLeast(500L)
             else -> durationMs
         }
 
@@ -108,8 +109,7 @@ object WatermarkProcessor {
         outputPath: String,
         cmd: String,
         hasAudio: Boolean,
-        trimStartSec: Float,
-        trimDurationSec: Float,
+        trimSegments: List<TrimSegment>,
         speedFactor: Float,
         overlayPngPath: String?,
         overlayX: Int,
@@ -117,74 +117,86 @@ object WatermarkProcessor {
     ): Array<String> {
         return when (cmd) {
             "FLIP_H" -> arrayOf(
-                "-y", "-i", inputPath,
-                "-vf", "hflip",
+                "-y", "-i", inputPath, "-vf", "hflip",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
-                outputPath
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", outputPath
             )
             "FLIP_V" -> arrayOf(
-                "-y", "-i", inputPath,
-                "-vf", "vflip",
+                "-y", "-i", inputPath, "-vf", "vflip",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
-                outputPath
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", outputPath
             )
             "FLIP_HV" -> arrayOf(
-                "-y", "-i", inputPath,
-                "-vf", "hflip,vflip",
+                "-y", "-i", inputPath, "-vf", "hflip,vflip",
                 "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
-                outputPath
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", outputPath
             )
             "COMPRESS_LIGHT" -> arrayOf(
                 "-y", "-i", inputPath,
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
-                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
-                outputPath
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", outputPath
             )
             "COMPRESS_BALANCED" -> arrayOf(
-                "-y", "-i", inputPath,
-                "-vf", "scale='min(1280,iw)':-2",
+                "-y", "-i", inputPath, "-vf", "scale='min(1280,iw)':-2",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
-                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
-                outputPath
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", outputPath
             )
             "COMPRESS_MAX" -> arrayOf(
-                "-y", "-i", inputPath,
-                "-vf", "scale='min(854,iw)':-2",
+                "-y", "-i", inputPath, "-vf", "scale='min(854,iw)':-2",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
-                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
-                outputPath
+                "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", outputPath
             )
             "TRIM" -> {
-                val startStr = String.format(Locale.US, "%.2f", trimStartSec.coerceAtLeast(0f))
-                val durStr = String.format(Locale.US, "%.2f", trimDurationSec.coerceAtLeast(0.5f))
-                val args = mutableListOf(
-                    "-y", "-ss", startStr, "-i", inputPath, "-t", durStr,
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-                    "-pix_fmt", "yuv420p"
-                )
-                if (hasAudio) args += listOf("-c:a", "aac", "-b:a", "192k") else args += "-an"
-                args += listOf("-movflags", "+faststart", outputPath)
-                args.toTypedArray()
+                val sorted = trimSegments.sortedBy { it.startSec }
+                if (sorted.size <= 1) {
+                    val seg = sorted.firstOrNull() ?: TrimSegment(0f, 10f)
+                    val sStr = String.format(Locale.US, "%.2f", seg.startSec.coerceAtLeast(0f))
+                    val dStr = String.format(Locale.US, "%.2f", (seg.endSec - seg.startSec).coerceAtLeast(0.4f))
+                    val args = mutableListOf(
+                        "-y", "-ss", sStr, "-i", inputPath, "-t", dStr,
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p"
+                    )
+                    if (hasAudio) args += listOf("-c:a", "aac", "-b:a", "192k") else args += "-an"
+                    args += listOf("-movflags", "+faststart", outputPath)
+                    args.toTypedArray()
+                } else {
+                    // Multi-cut concat of multiple kept segments!
+                    val fc = StringBuilder()
+                    val concatInputs = StringBuilder()
+                    sorted.forEachIndexed { idx, seg ->
+                        val sStr = String.format(Locale.US, "%.2f", seg.startSec.coerceAtLeast(0f))
+                        val eStr = String.format(Locale.US, "%.2f", seg.endSec.coerceAtLeast(seg.startSec + 0.3f))
+                        fc.append("[0:v]trim=start=$sStr:end=$eStr,setpts=PTS-STARTPTS[v$idx];")
+                        if (hasAudio) {
+                            fc.append("[0:a]atrim=start=$sStr:end=$eStr,asetpts=PTS-STARTPTS[a$idx];")
+                            concatInputs.append("[v$idx][a$idx]")
+                        } else {
+                            concatInputs.append("[v$idx]")
+                        }
+                    }
+                    if (hasAudio) {
+                        fc.append("${concatInputs}concat=n=${sorted.size}:v=1:a=1[vout][aout]")
+                    } else {
+                        fc.append("${concatInputs}concat=n=${sorted.size}:v=1:a=0[vout]")
+                    }
+                    val args = mutableListOf("-y", "-i", inputPath, "-filter_complex", fc.toString(), "-map", "[vout]")
+                    if (hasAudio) args += listOf("-map", "[aout]", "-c:a", "aac", "-b:a", "192k") else args += "-an"
+                    args += listOf(
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                        "-pix_fmt", "yuv420p", "-movflags", "+faststart", outputPath
+                    )
+                    args.toTypedArray()
+                }
             }
             "SPEED" -> {
-                val ptsFactor = String.format(Locale.US, "%.4f", 1f / speedFactor)
-                val tempoStr = String.format(Locale.US, "%.2f", speedFactor.coerceIn(0.5f, 2.0f))
-                val args = mutableListOf(
-                    "-y", "-i", inputPath,
-                    "-vf", "setpts=$ptsFactor*PTS"
-                )
-                if (hasAudio) {
-                    args += listOf("-af", "atempo=$tempoStr", "-c:a", "aac", "-b:a", "192k")
-                } else {
-                    args += "-an"
-                }
+                val safeSpeed = speedFactor.coerceIn(0.5f, 2.0f)
+                val ptsFactor = String.format(Locale.US, "%.4f", 1f / safeSpeed)
+                val tempoStr = String.format(Locale.US, "%.2f", safeSpeed)
+                val args = mutableListOf("-y", "-i", inputPath, "-vf", "setpts=$ptsFactor*PTS")
+                if (hasAudio) args += listOf("-af", "atempo=$tempoStr", "-c:a", "aac", "-b:a", "192k") else args += "-an"
                 args += listOf(
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-                    "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-                    outputPath
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart", outputPath
                 )
                 args.toTypedArray()
             }
@@ -194,26 +206,27 @@ object WatermarkProcessor {
                     "-y", "-i", inputPath, "-i", png,
                     "-filter_complex", "[0:v][1:v]overlay=$overlayX:$overlayY",
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-                    "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
-                    outputPath
+                    "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", outputPath
                 )
             }
             "TO_AUDIO" -> arrayOf(
-                "-y", "-i", inputPath,
-                "-vn", "-c:a", "aac", "-b:a", "192k",
-                outputPath
+                "-y", "-i", inputPath, "-vn", "-c:a", "aac", "-b:a", "192k", outputPath
             )
             "REVERSE" -> {
-                val args = mutableListOf("-y", "-i", inputPath, "-vf", "reverse")
+                val safeSpeed = speedFactor.coerceIn(0.5f, 2.0f)
+                val ptsFactor = String.format(Locale.US, "%.4f", 1f / safeSpeed)
+                val tempoStr = String.format(Locale.US, "%.2f", safeSpeed)
+                val vf = if (kotlin.math.abs(safeSpeed - 1f) > 0.03f) "reverse,setpts=$ptsFactor*PTS" else "reverse"
+                val args = mutableListOf("-y", "-i", inputPath, "-vf", vf)
                 if (hasAudio) {
-                    args += listOf("-af", "areverse", "-c:a", "aac", "-b:a", "192k")
+                    val af = if (kotlin.math.abs(safeSpeed - 1f) > 0.03f) "areverse,atempo=$tempoStr" else "areverse"
+                    args += listOf("-af", af, "-c:a", "aac", "-b:a", "192k")
                 } else {
                     args += "-an"
                 }
                 args += listOf(
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-                    "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-                    outputPath
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart", outputPath
                 )
                 args.toTypedArray()
             }
@@ -231,11 +244,12 @@ object WatermarkProcessor {
 
         when (mode) {
             RemovalMode.SMART_ERASE -> {
-                val filters = boxes.joinToString(",") { b ->
+                // Tight delogo + mild unsharp texture recovery so erased area looks cleaner
+                val delogoChain = boxes.joinToString(",") { b ->
                     val enablePart = buildEnableClause(b)
                     "delogo=x=${b.x}:y=${b.y}:w=${b.w}:h=${b.h}:show=0$enablePart"
                 }
-                args += listOf("-vf", filters)
+                args += listOf("-vf", "$delogoChain,unsharp=3:3:0.35:3:3:0.0")
             }
 
             RemovalMode.BLUR -> {
@@ -267,8 +281,7 @@ object WatermarkProcessor {
 
         args += listOf(
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
-            "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
-            outputPath
+            "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", outputPath
         )
 
         return args.toTypedArray()

@@ -1,7 +1,10 @@
 package com.visionit.watermark.ui
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
+import android.graphics.Typeface
 import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
@@ -55,6 +58,21 @@ class WatermarkOverlayView @JvmOverloads constructor(
         }
 
     var onBoxesChanged: (() -> Unit)? = null
+
+    // Live Preview Overlay (for Add Text / Logo mode)
+    var isAddOverlayMode: Boolean = false
+    var previewText: String = ""
+        set(value) { field = value; invalidate() }
+    var previewTypeface: Typeface = Typeface.DEFAULT_BOLD
+        set(value) { field = value; invalidate() }
+    var previewTextColor: Int = Color.WHITE
+        set(value) { field = value; invalidate() }
+    var previewLogoBitmap: Bitmap? = null
+        set(value) { field = value; invalidate() }
+
+    private val liveTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+    }
 
     private var videoWidth = 16
     private var videoHeight = 9
@@ -280,7 +298,29 @@ class WatermarkOverlayView @JvmOverloads constructor(
                 else -> 65
             }
 
-            if (mode != RemovalMode.CROP) {
+            if (isAddOverlayMode && index == 0) {
+                // Draw live Logo or live Styled Text directly inside the draggable box!
+                val logo = previewLogoBitmap
+                if (logo != null && !logo.isRecycled) {
+                    val dst = Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt())
+                    canvas.drawBitmap(logo, null, dst, null)
+                } else if (previewText.isNotBlank()) {
+                    liveTextPaint.color = previewTextColor
+                    liveTextPaint.typeface = previewTypeface
+                    liveTextPaint.setShadowLayer(6f, 2f, 2f, Color.argb(200, 0, 0, 0))
+                    var sz = (r.height() * 0.62f).coerceAtLeast(18f)
+                    liveTextPaint.textSize = sz
+                    val measured = liveTextPaint.measureText(previewText)
+                    val availW = (r.width() - 12f).coerceAtLeast(24f)
+                    if (measured > availW && measured > 0f) {
+                        sz *= (availW / measured)
+                        liveTextPaint.textSize = sz.coerceAtLeast(12f)
+                    }
+                    val fm = liveTextPaint.fontMetrics
+                    val baseY = r.centerY() - (fm.ascent + fm.descent) / 2f
+                    canvas.drawText(previewText, r.centerX(), baseY, liveTextPaint)
+                }
+            } else if (mode != RemovalMode.CROP) {
                 boxFillPaint.color = Color.argb((alphaFactor * 0.14f).toInt(), Color.red(box.color), Color.green(box.color), Color.blue(box.color))
                 canvas.drawRect(r, boxFillPaint)
             }
