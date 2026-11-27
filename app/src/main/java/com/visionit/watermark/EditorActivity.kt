@@ -186,6 +186,9 @@ class EditorActivity : AppCompatActivity() {
                 binding.areaBarRow.visibility = View.GONE
                 binding.tvQuickToolBanner.visibility = View.GONE
                 binding.timelineCard.visibility = View.VISIBLE
+                val lp = binding.timelineCard.layoutParams
+                lp.height = (108 * resources.displayMetrics.density).toInt()
+                binding.timelineCard.layoutParams = lp
                 binding.timelineView.isCapCutTrimMode = true
                 binding.capcutTrimBar.visibility = View.VISIBLE
             }
@@ -703,13 +706,10 @@ class EditorActivity : AppCompatActivity() {
      */
     private fun prepareInstantReversedVideo(exo: ExoPlayer) {
         val revFile = File(cacheDir, "reversed_live_${System.currentTimeMillis()}.mp4")
-        binding.processingOverlay.visibility = View.VISIBLE
-        binding.resultCard.visibility = View.GONE
-        binding.btnCancelProcess.visibility = View.VISIBLE
-        binding.circularProgress.progress = 0
-        binding.tvPercent.text = "0%"
-        binding.tvProcessBrand.text = "Reverse Video"
-        binding.tvProcessStatus.text = "Reversing video for live preview…"
+        binding.tvReversePreparing.visibility = View.VISIBLE
+        binding.tvReversePreparing.text = "Preparing reverse preview… 0%"
+        binding.btnExport.isEnabled = false
+        binding.btnExport.alpha = 0.5f
 
         WatermarkProcessor.processVideo(
             context = this,
@@ -720,17 +720,18 @@ class EditorActivity : AppCompatActivity() {
             durationMs = videoDurationMs,
             quickToolCommand = "REVERSE",
             hasAudio = videoHasAudio,
-            targetResolution = "ORIGINAL",
+            targetResolution = "720P",
             speedFactor = 1.0f,
             onProgress = { pct ->
                 runOnUiThread {
-                    binding.circularProgress.progress = pct
-                    binding.tvPercent.text = "$pct%"
+                    binding.tvReversePreparing.text = "Preparing reverse preview… $pct%"
                 }
             },
             onComplete = { success, error ->
                 runOnUiThread {
-                    binding.processingOverlay.visibility = View.GONE
+                    binding.tvReversePreparing.visibility = View.GONE
+                    binding.btnExport.isEnabled = true
+                    binding.btnExport.alpha = 1.0f
                     if (success && revFile.exists()) {
                         reversedReadyFile = revFile
                         exo.setMediaItem(MediaItem.fromUri(Uri.fromFile(revFile)))

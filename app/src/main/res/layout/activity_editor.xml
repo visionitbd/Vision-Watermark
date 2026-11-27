@@ -156,6 +156,20 @@
                 app:surface_type="texture_view"
                 app:use_controller="false" />
 
+            <TextView
+                android:id="@+id/tvReversePreparing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_premium_dialog"
+                android:paddingHorizontal="18dp"
+                android:paddingVertical="10dp"
+                android:text="Preparing reverse preview… 0%"
+                android:textColor="@color/cyan_accent"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
             <com.visionit.watermark.ui.WatermarkOverlayView
                 android:id="@+id/watermarkOverlay"
                 android:layout_width="match_parent"

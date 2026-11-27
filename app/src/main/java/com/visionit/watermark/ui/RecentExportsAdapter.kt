@@ -46,8 +46,6 @@ class RecentExportsAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: ExportedVideoItem) {
-            val cleanName = item.name.removeSuffix(".mp4").replace("VWatermark_", "Vision ")
-            binding.tvFileName.text = cleanName
             binding.tvDurationBadge.text = GalleryHelper.formatDuration(item.durationMs)
             binding.tvSizeBadge.text = GalleryHelper.formatSize(item.sizeBytes)
 

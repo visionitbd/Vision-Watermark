@@ -151,19 +151,72 @@ class WatermarkTimelineView @JvmOverloads constructor(
         return (ratio * durationMs).toLong()
     }
 
-    private fun filmstripTop(): Float = if (isCapCutTrimMode) 52f else height - 118f
-    private fun filmstripBottom(): Float = if (isCapCutTrimMode) height - 22f else height - 42f
+    private fun filmstripTop(): Float = if (isCapCutTrimMode) 40f else height - 118f
+    private fun filmstripBottom(): Float = if (isCapCutTrimMode) height - 14f else height - 42f
+
+    private fun keptTotalDurationMs(): Long {
+        if (boxes.isEmpty()) return max(1L, durationMs)
+        return boxes.sumOf { b ->
+            val end = if (b.endMs > b.startMs) b.endMs else durationMs
+            (end - b.startMs).coerceAtLeast(200L)
+        }.coerceAtLeast(1L)
+    }
+
+    /** Maps a real source timestamp onto the contiguous (ripple-joined) CapCut X axis. */
+    private fun capcutSourceMsToX(sourceMs: Long): Float {
+        val totalKept = keptTotalDurationMs().toFloat()
+        var accMs = 0L
+        for (b in boxes) {
+            val end = if (b.endMs > b.startMs) b.endMs else durationMs
+            val len = (end - b.startMs).coerceAtLeast(200L)
+            if (sourceMs <= b.startMs) {
+                return trackLeft() + (accMs / totalKept) * trackWidth()
+            } else if (sourceMs <= end) {
+                return trackLeft() + ((accMs + (sourceMs - b.startMs)) / totalKept) * trackWidth()
+            }
+            accMs += len
+        }
+        return trackRight()
+    }
+
+    /** Maps a touched X coordinate on the contiguous CapCut strip back to the real source timestamp. */
+    private fun capcutXToSourceMs(x: Float): Long {
+        val ratio = ((x - trackLeft()) / trackWidth()).coerceIn(0f, 1f)
+        val targetKeptMs = (ratio * keptTotalDurationMs()).toLong()
+        var accMs = 0L
+        for (b in boxes) {
+            val end = if (b.endMs > b.startMs) b.endMs else durationMs
+            val len = (end - b.startMs).coerceAtLeast(200L)
+            if (targetKeptMs <= accMs + len) {
+                return (b.startMs + (targetKeptMs - accMs)).coerceIn(b.startMs, end)
+            }
+            accMs += len
+        }
+        val last = boxes.lastOrNull() ?: return 0L
+        return if (last.endMs > last.startMs) last.endMs else durationMs
+    }
 
     private fun trackRectForIndex(idx: Int): RectF {
         val box = boxes[idx]
         val end = if (box.endMs > 0L) box.endMs else durationMs
-        val x1 = msToX(box.startMs)
-        val x2 = msToX(end).coerceAtLeast(x1 + 24f)
 
         if (isCapCutTrimMode) {
-            // Single-row inline CapCut clip right on the filmstrip!
-            return RectF(x1 + 3f, filmstripTop(), x2 - 3f, filmstripBottom())
+            // Magnetic CapCut Auto-Ripple Join: clips sit directly adjacent with zero empty gaps!
+            val totalKept = keptTotalDurationMs().toFloat()
+            var accMs = 0L
+            for (i in 0 until idx) {
+                val pb = boxes[i]
+                val pEnd = if (pb.endMs > pb.startMs) pb.endMs else durationMs
+                accMs += (pEnd - pb.startMs).coerceAtLeast(200L)
+            }
+            val len = (end - box.startMs).coerceAtLeast(200L)
+            val x1 = trackLeft() + (accMs / totalKept) * trackWidth()
+            val x2 = trackLeft() + ((accMs + len) / totalKept) * trackWidth()
+            return RectF(x1 + 2.5f, filmstripTop(), (x2 - 2.5f).coerceAtLeast(x1 + 24f), filmstripBottom())
         }
+
+        val x1 = msToX(box.startMs)
+        val x2 = msToX(end).coerceAtLeast(x1 + 24f)
 
         val availableH = (filmstripTop() - 18f).coerceAtLeast(44f)
         val count = boxes.size.coerceAtLeast(1)
@@ -190,14 +243,15 @@ class WatermarkTimelineView @JvmOverloads constructor(
         val fTop = filmstripTop()
         val fBot = filmstripBottom()
 
-        // 1. Top Time Ruler (like CapCut: 00:00  •  00:15  •  00:30 ...)
+        // 1. Top Time Ruler showing joined kept duration (auto-updates when middle clip deleted!)
+        val joinedDur = keptTotalDurationMs()
         val tickCount = 5
         for (i in 0 until tickCount) {
             val frac = i.toFloat() / (tickCount - 1)
             val x = trackLeft() + frac * trackWidth()
-            val ms = (frac * durationMs).toLong()
-            canvas.drawText(GalleryHelper.formatDuration(ms), x, 28f, rulerTextPaint)
-            canvas.drawLine(x, 36f, x, 44f, rulerTickPaint)
+            val ms = (frac * joinedDur).toLong()
+            canvas.drawText(GalleryHelper.formatDuration(ms), x, 22f, rulerTextPaint)
+            canvas.drawLine(x, 28f, x, 35f, rulerTickPaint)
         }
 
         // 2. Dark empty track background (deleted segments appear dark/empty)
@@ -255,8 +309,8 @@ class WatermarkTimelineView @JvmOverloads constructor(
             }
         }
 
-        // 4. Crisp White Vertical Playhead Line (CapCut style)
-        val px = msToX(playheadMs)
+        // 4. Crisp White Vertical Playhead Line (mapped onto ripple-joined timeline)
+        val px = capcutSourceMsToX(playheadMs)
         canvas.drawLine(px, 34f, px, fBot + 10f, playheadGlowPaint)
         canvas.drawLine(px, 34f, px, fBot + 10f, playheadPaint)
     }
@@ -351,7 +405,7 @@ class WatermarkTimelineView @JvmOverloads constructor(
                 if (isCapCutTrimMode && y < filmstripTop()) {
                     touchAction = TouchAction.SCRUB
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    val targetMs = xToMs(x)
+                    val targetMs = capcutXToSourceMs(x)
                     playheadMs = targetMs
                     onScrubTo?.invoke(targetMs)
                     invalidate()
@@ -375,7 +429,7 @@ class WatermarkTimelineView @JvmOverloads constructor(
                                 selectedIndex = i
                                 onBoxSelected?.invoke(i)
                                 touchAction = TouchAction.SCRUB
-                                val targetMs = xToMs(x)
+                                val targetMs = capcutXToSourceMs(x)
                                 playheadMs = targetMs
                                 onScrubTo?.invoke(targetMs)
                                 parent?.requestDisallowInterceptTouchEvent(true)
@@ -412,7 +466,7 @@ class WatermarkTimelineView @JvmOverloads constructor(
                 val x = event.x
                 when (touchAction) {
                     TouchAction.SCRUB -> {
-                        val targetMs = xToMs(x)
+                        val targetMs = if (isCapCutTrimMode) capcutXToSourceMs(x) else xToMs(x)
                         playheadMs = targetMs
                         onScrubTo?.invoke(targetMs)
                         invalidate()
