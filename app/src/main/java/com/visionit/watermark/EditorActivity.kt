@@ -67,6 +67,7 @@ class EditorActivity : AppCompatActivity() {
     private var speedFactor = 1.0f
     private var targetResolution = "ORIGINAL"
     private var muteReverseAudio = false
+    private var reversedReadyFile: File? = null
     private var isReversePreviewActive = false
     private var reversePreviewPosMs = 0L
 
@@ -106,17 +107,7 @@ class EditorActivity : AppCompatActivity() {
     private val progressUpdater = object : Runnable {
         override fun run() {
             val p = player ?: return
-            if (isReversePreviewActive) {
-                val stepMs = (110f * speedFactor).toLong().coerceAtLeast(45L)
-                reversePreviewPosMs -= stepMs
-                if (reversePreviewPosMs <= 0L) reversePreviewPosMs = videoDurationMs
-                p.seekTo(reversePreviewPosMs)
-                binding.seekBar.max = videoDurationMs.toInt()
-                binding.seekBar.progress = reversePreviewPosMs.toInt()
-                binding.tvCurrentTime.text = GalleryHelper.formatDuration(reversePreviewPosMs)
-                handler.postDelayed(this, 100)
-                return
-            }
+
 
             if (!isSeeking && p.duration > 0) {
                 var pos = p.currentPosition
@@ -193,9 +184,9 @@ class EditorActivity : AppCompatActivity() {
                 binding.modeChipsRow.visibility = View.GONE
                 binding.watermarkOverlay.visibility = View.GONE
                 binding.areaBarRow.visibility = View.GONE
-                binding.tvQuickToolBanner.visibility = View.VISIBLE
-                binding.tvQuickToolBanner.text = "1. Drag playhead to cut point  →  2. Tap Split Here  →  3. Select & Delete Clip"
+                binding.tvQuickToolBanner.visibility = View.GONE
                 binding.timelineCard.visibility = View.VISIBLE
+                binding.timelineView.isCapCutTrimMode = true
                 binding.capcutTrimBar.visibility = View.VISIBLE
             }
             "SPEED" -> {
@@ -481,11 +472,7 @@ class EditorActivity : AppCompatActivity() {
         }
 
         binding.btnPlayPause.setOnClickListener {
-            if (quickTool == "REVERSE") {
-                isReversePreviewActive = !isReversePreviewActive
-                binding.btnPlayPause.setImageResource(if (isReversePreviewActive) R.drawable.ic_pause else R.drawable.ic_play)
-                return@setOnClickListener
-            }
+
             val p = player ?: return@setOnClickListener
             if (p.isPlaying) {
                 p.pause()
@@ -671,9 +658,8 @@ class EditorActivity : AppCompatActivity() {
             }
 
             val exo = ExoPlayer.Builder(this@EditorActivity).build().apply {
-                setMediaItem(MediaItem.fromUri(videoUri))
                 repeatMode = Player.REPEAT_MODE_ONE
-                if (quickTool == "SPEED") setPlaybackSpeed(speedFactor)
+                if (quickTool == "SPEED" || quickTool == "REVERSE") setPlaybackSpeed(speedFactor)
                 addListener(object : Player.Listener {
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
                         if (videoSize.width > 0 && videoSize.height > 0) {
@@ -696,18 +682,72 @@ class EditorActivity : AppCompatActivity() {
                         }
                     }
                 })
-                prepare()
-                playWhenReady = (quickTool != "REVERSE")
             }
             player = exo
             binding.playerView.player = exo
+
             if (quickTool == "REVERSE") {
-                isReversePreviewActive = true
-                reversePreviewPosMs = videoDurationMs
-                binding.btnPlayPause.setImageResource(R.drawable.ic_pause)
+                prepareInstantReversedVideo(exo)
+            } else {
+                exo.setMediaItem(MediaItem.fromUri(videoUri))
+                exo.prepare()
+                exo.playWhenReady = true
+                handler.post(progressUpdater)
             }
-            handler.post(progressUpdater)
         }
+    }
+
+    /**
+     * CapCut-style real Reverse: immediately reverses the selected video into a smooth playable file
+     * so ExoPlayer plays backwards at full 60fps from 00:00 with real reversed audio & live Speed Slider!
+     */
+    private fun prepareInstantReversedVideo(exo: ExoPlayer) {
+        val revFile = File(cacheDir, "reversed_live_${System.currentTimeMillis()}.mp4")
+        binding.processingOverlay.visibility = View.VISIBLE
+        binding.resultCard.visibility = View.GONE
+        binding.btnCancelProcess.visibility = View.VISIBLE
+        binding.circularProgress.progress = 0
+        binding.tvPercent.text = "0%"
+        binding.tvProcessBrand.text = "Reverse Video"
+        binding.tvProcessStatus.text = "Reversing video for live preview…"
+
+        WatermarkProcessor.processVideo(
+            context = this,
+            inputUri = videoUri,
+            outputFile = revFile,
+            mode = currentMode,
+            boxes = emptyList(),
+            durationMs = videoDurationMs,
+            quickToolCommand = "REVERSE",
+            hasAudio = videoHasAudio,
+            targetResolution = "ORIGINAL",
+            speedFactor = 1.0f,
+            onProgress = { pct ->
+                runOnUiThread {
+                    binding.circularProgress.progress = pct
+                    binding.tvPercent.text = "$pct%"
+                }
+            },
+            onComplete = { success, error ->
+                runOnUiThread {
+                    binding.processingOverlay.visibility = View.GONE
+                    if (success && revFile.exists()) {
+                        reversedReadyFile = revFile
+                        exo.setMediaItem(MediaItem.fromUri(Uri.fromFile(revFile)))
+                        exo.setPlaybackSpeed(speedFactor)
+                        exo.prepare()
+                        exo.playWhenReady = true
+                        binding.btnPlayPause.setImageResource(R.drawable.ic_pause)
+                        handler.post(progressUpdater)
+                    } else {
+                        if (error != "Cancelled") {
+                            Toast.makeText(this, "Reverse failed: ${error ?: "Unknown error"}", Toast.LENGTH_LONG).show()
+                        }
+                        finish()
+                    }
+                }
+            }
+        )
     }
 
     private fun extractFilmstripThumbnails() {
@@ -778,6 +818,29 @@ class EditorActivity : AppCompatActivity() {
         isReversePreviewActive = false
         player?.pause()
         binding.btnPlayPause.setImageResource(R.drawable.ic_play)
+
+        // Instant zero-wait Export if Reverse video is already built at 1.0x Original!
+        val readyRev = reversedReadyFile
+        if (quickTool == "REVERSE" && readyRev != null && readyRev.exists() &&
+            kotlin.math.abs(speedFactor - 1.0f) < 0.03f && targetResolution == "ORIGINAL"
+        ) {
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val finalName = "VWatermark_Rev_$stamp.mp4"
+            binding.processingOverlay.visibility = View.VISIBLE
+            binding.btnCancelProcess.visibility = View.GONE
+            binding.circularProgress.progress = 100
+            binding.tvPercent.text = "100%"
+            binding.tvProcessBrand.text = getString(R.string.app_title)
+            binding.tvProcessStatus.text = "Done! Saved to Gallery"
+            lifecycleScope.launch {
+                savedOutputUri = withContext(Dispatchers.IO) {
+                    GalleryHelper.saveVideoToGallery(this@EditorActivity, readyRev, finalName)
+                }
+                binding.tvSavedLabel.text = getString(R.string.saved_to_gallery)
+                binding.resultCard.visibility = View.VISIBLE
+            }
+            return
+        }
 
         val pixelBoxes = binding.watermarkOverlay.computePixelBoxes(videoWidth, videoHeight)
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
@@ -919,5 +982,6 @@ class EditorActivity : AppCompatActivity() {
         WatermarkProcessor.cancelCurrent()
         player?.release()
         player = null
+        reversedReadyFile?.delete()
     }
 }

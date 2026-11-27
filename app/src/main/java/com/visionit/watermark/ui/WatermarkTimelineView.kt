@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 import com.visionit.watermark.model.WatermarkBox
 import com.visionit.watermark.util.GalleryHelper
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -29,6 +30,15 @@ class WatermarkTimelineView @JvmOverloads constructor(
     private var playheadMs: Long = 0L
     private var thumbnails: List<Bitmap> = emptyList()
 
+    /**
+     * When true, renders CapCut-style single-row split filmstrip with white selection border & duration badge!
+     */
+    var isCapCutTrimMode: Boolean = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     var onBoxSelected: ((Int) -> Unit)? = null
     var onRangeChanged: ((Int, Long, Long) -> Unit)? = null
     var onScrubTo: ((Long) -> Unit)? = null
@@ -40,7 +50,7 @@ class WatermarkTimelineView @JvmOverloads constructor(
     private var touchDownRangeLen = 0L
 
     private val trackPaddingH = 26f
-    private val handleWidth = 34f
+    private val handleWidth = 30f
     private val minRangeMs = 400L
 
     private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -48,6 +58,28 @@ class WatermarkTimelineView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         strokeWidth = 3f
         color = Color.WHITE
+    }
+    private val capcutBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 6f
+        color = Color.WHITE
+    }
+    private val capcutHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.WHITE
+    }
+    private val capcutHandleGripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#111827")
+        strokeWidth = 4f
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val badgeBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#CC050A14")
+    }
+    private val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 22f
+        isFakeBoldText = true
     }
     private val handleBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#1D2C44")
@@ -76,7 +108,7 @@ class WatermarkTimelineView @JvmOverloads constructor(
         color = Color.parseColor("#0B1424")
     }
     private val playheadPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#3B8BFF")
+        color = Color.WHITE
         strokeWidth = 5f
     }
     private val playheadGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -119,10 +151,20 @@ class WatermarkTimelineView @JvmOverloads constructor(
         return (ratio * durationMs).toLong()
     }
 
-    private fun filmstripTop(): Float = height - 118f
-    private fun filmstripBottom(): Float = height - 42f
+    private fun filmstripTop(): Float = if (isCapCutTrimMode) 52f else height - 118f
+    private fun filmstripBottom(): Float = if (isCapCutTrimMode) height - 22f else height - 42f
 
     private fun trackRectForIndex(idx: Int): RectF {
+        val box = boxes[idx]
+        val end = if (box.endMs > 0L) box.endMs else durationMs
+        val x1 = msToX(box.startMs)
+        val x2 = msToX(end).coerceAtLeast(x1 + 24f)
+
+        if (isCapCutTrimMode) {
+            // Single-row inline CapCut clip right on the filmstrip!
+            return RectF(x1 + 3f, filmstripTop(), x2 - 3f, filmstripBottom())
+        }
+
         val availableH = (filmstripTop() - 18f).coerceAtLeast(44f)
         val count = boxes.size.coerceAtLeast(1)
         val gap = 8f
@@ -130,10 +172,6 @@ class WatermarkTimelineView @JvmOverloads constructor(
         val totalBarsH = barH * count + gap * (count - 1)
         val startY = (filmstripTop() - 12f - totalBarsH).coerceAtLeast(6f)
         val top = startY + idx * (barH + gap)
-        val box = boxes[idx]
-        val end = if (box.endMs > 0L) box.endMs else durationMs
-        val x1 = msToX(box.startMs)
-        val x2 = msToX(end).coerceAtLeast(x1 + 24f)
         return RectF(x1, top, x2, top + barH)
     }
 
@@ -141,10 +179,92 @@ class WatermarkTimelineView @JvmOverloads constructor(
         super.onDraw(canvas)
         if (width <= 0 || height <= 0) return
 
+        if (isCapCutTrimMode) {
+            drawCapCutFilmstripTimeline(canvas)
+        } else {
+            drawWatermarkTracksTimeline(canvas)
+        }
+    }
+
+    private fun drawCapCutFilmstripTimeline(canvas: Canvas) {
         val fTop = filmstripTop()
         val fBot = filmstripBottom()
 
-        // 1. Filmstrip Thumbnails Bar
+        // 1. Top Time Ruler (like CapCut: 00:00  •  00:15  •  00:30 ...)
+        val tickCount = 5
+        for (i in 0 until tickCount) {
+            val frac = i.toFloat() / (tickCount - 1)
+            val x = trackLeft() + frac * trackWidth()
+            val ms = (frac * durationMs).toLong()
+            canvas.drawText(GalleryHelper.formatDuration(ms), x, 28f, rulerTextPaint)
+            canvas.drawLine(x, 36f, x, 44f, rulerTickPaint)
+        }
+
+        // 2. Dark empty track background (deleted segments appear dark/empty)
+        tempRect.set(trackLeft(), fTop, trackRight(), fBot)
+        canvas.drawRoundRect(tempRect, 14f, 14f, filmstripBgPaint)
+
+        // 3. Draw each kept clip as an inline sliced filmstrip segment with crisp cut gaps!
+        boxes.forEachIndexed { idx, box ->
+            val r = trackRectForIndex(idx)
+            val isSelected = idx == selectedIndex
+            val end = if (box.endMs > 0L) box.endMs else durationMs
+
+            canvas.save()
+            clipPath.reset()
+            clipPath.addRoundRect(r, 12f, 12f, Path.Direction.CW)
+            canvas.clipPath(clipPath)
+
+            // Draw corresponding filmstrip thumbnails inside this clip's slice
+            if (thumbnails.isNotEmpty()) {
+                val segW = trackWidth() / thumbnails.size
+                thumbnails.forEachIndexed { tIdx, bmp ->
+                    if (!bmp.isRecycled) {
+                        val left = trackLeft() + tIdx * segW
+                        dstRect.set(left, fTop, left + segW + 1f, fBot)
+                        srcRect.set(0, 0, bmp.width, bmp.height)
+                        canvas.drawBitmap(bmp, srcRect, dstRect, null)
+                    }
+                }
+            }
+            canvas.restore()
+
+            // Duration badge in top-left of clip (e.g. "57.5s")
+            val clipSec = (end - box.startMs) / 1000f
+            val durLabel = String.format(Locale.US, "%.1fs", clipSec)
+            if (r.width() > 70f) {
+                val bx = r.left + (if (isSelected) 28f else 8f)
+                val by = r.top + 8f
+                val tw = badgeTextPaint.measureText(durLabel)
+                canvas.drawRoundRect(bx, by, bx + tw + 14f, by + 30f, 8f, 8f, badgeBgPaint)
+                canvas.drawText(durLabel, bx + 7f, by + 22f, badgeTextPaint)
+            }
+
+            // Bright CapCut white border + thick white side trim handles on selected clip
+            if (isSelected) {
+                canvas.drawRoundRect(r, 12f, 12f, capcutBorderPaint)
+
+                val hw = 22f
+                val lh = RectF(r.left, r.top, (r.left + hw).coerceAtMost(r.centerX()), r.bottom)
+                canvas.drawRoundRect(lh, 10f, 10f, capcutHandlePaint)
+                canvas.drawLine(lh.centerX(), lh.centerY() - 14f, lh.centerX(), lh.centerY() + 14f, capcutHandleGripPaint)
+
+                val rh = RectF((r.right - hw).coerceAtLeast(r.centerX()), r.top, r.right, r.bottom)
+                canvas.drawRoundRect(rh, 10f, 10f, capcutHandlePaint)
+                canvas.drawLine(rh.centerX(), rh.centerY() - 14f, rh.centerX(), rh.centerY() + 14f, capcutHandleGripPaint)
+            }
+        }
+
+        // 4. Crisp White Vertical Playhead Line (CapCut style)
+        val px = msToX(playheadMs)
+        canvas.drawLine(px, 34f, px, fBot + 10f, playheadGlowPaint)
+        canvas.drawLine(px, 34f, px, fBot + 10f, playheadPaint)
+    }
+
+    private fun drawWatermarkTracksTimeline(canvas: Canvas) {
+        val fTop = filmstripTop()
+        val fBot = filmstripBottom()
+
         tempRect.set(trackLeft(), fTop, trackRight(), fBot)
         canvas.drawRoundRect(tempRect, 12f, 12f, filmstripBgPaint)
 
@@ -165,7 +285,6 @@ class WatermarkTimelineView @JvmOverloads constructor(
             canvas.restore()
         }
 
-        // 2. Time Ruler Ticks & Labels
         val rulerY = height - 10f
         val tickCount = 5
         for (i in 0 until tickCount) {
@@ -176,7 +295,6 @@ class WatermarkTimelineView @JvmOverloads constructor(
             canvas.drawText(GalleryHelper.formatDuration(ms), x, rulerY, rulerTextPaint)
         }
 
-        // 3. Multi-Track Draggable Watermark Bars
         boxes.forEachIndexed { idx, box ->
             val r = trackRectForIndex(idx)
             val isSelected = idx == selectedIndex
@@ -192,18 +310,15 @@ class WatermarkTimelineView @JvmOverloads constructor(
             if (isSelected) {
                 canvas.drawRoundRect(r, 12f, 12f, barBorderPaint)
 
-                // Left trim handle (<)
                 val lh = RectF(r.left - 2f, r.top, (r.left + handleWidth).coerceAtMost(r.centerX()), r.bottom)
                 canvas.drawRoundRect(lh, 10f, 10f, handleBgPaint)
                 canvas.drawText("‹", lh.centerX(), lh.centerY() + 8f, handleIconPaint)
 
-                // Right trim handle (>)
                 val rh = RectF((r.right - handleWidth).coerceAtLeast(r.centerX()), r.top, r.right + 2f, r.bottom)
                 canvas.drawRoundRect(rh, 10f, 10f, handleBgPaint)
                 canvas.drawText("›", rh.centerX(), rh.centerY() + 8f, handleIconPaint)
             }
 
-            // Track Label inside bar (#1 00:03–00:12)
             val label = "#${idx + 1}  ${GalleryHelper.formatDuration(box.startMs)}–${GalleryHelper.formatDuration(end)}"
             val textStart = if (isSelected) r.left + handleWidth + 10f else r.left + 12f
             val maxTextRight = if (isSelected) r.right - handleWidth - 8f else r.right - 8f
@@ -215,7 +330,6 @@ class WatermarkTimelineView @JvmOverloads constructor(
             }
         }
 
-        // 4. Vertical Glowing Playhead Line
         val px = msToX(playheadMs)
         canvas.drawLine(px, 2f, px, fBot + 6f, playheadGlowPaint)
         canvas.drawLine(px, 2f, px, fBot + 6f, playheadPaint)
@@ -233,11 +347,21 @@ class WatermarkTimelineView @JvmOverloads constructor(
                 touchAction = TouchAction.NONE
                 activeTrackIndex = -1
 
-                // Check track bars first
+                // In CapCut Trim mode, tapping top ruler always scrubs playhead directly
+                if (isCapCutTrimMode && y < filmstripTop()) {
+                    touchAction = TouchAction.SCRUB
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    val targetMs = xToMs(x)
+                    playheadMs = targetMs
+                    onScrubTo?.invoke(targetMs)
+                    invalidate()
+                    return true
+                }
+
                 for (i in boxes.indices) {
                     val r = trackRectForIndex(i)
                     if (y >= r.top - 10f && y <= r.bottom + 10f) {
-                        val hitPad = 36f
+                        val hitPad = 32f
                         if (abs(x - r.left) <= hitPad) {
                             activeTrackIndex = i
                             touchAction = TouchAction.TRIM_LEFT
@@ -246,10 +370,23 @@ class WatermarkTimelineView @JvmOverloads constructor(
                             touchAction = TouchAction.TRIM_RIGHT
                         } else if (x >= r.left && x <= r.right) {
                             activeTrackIndex = i
-                            touchAction = TouchAction.MOVE_BAR
-                            val b = boxes[i]
-                            val end = if (b.endMs > 0L) b.endMs else durationMs
-                            touchDownRangeLen = (end - b.startMs).coerceAtLeast(minRangeMs)
+                            if (isCapCutTrimMode) {
+                                // Tapping inside a CapCut clip selects it AND scrubs playhead to tap point!
+                                selectedIndex = i
+                                onBoxSelected?.invoke(i)
+                                touchAction = TouchAction.SCRUB
+                                val targetMs = xToMs(x)
+                                playheadMs = targetMs
+                                onScrubTo?.invoke(targetMs)
+                                parent?.requestDisallowInterceptTouchEvent(true)
+                                invalidate()
+                                return true
+                            } else {
+                                touchAction = TouchAction.MOVE_BAR
+                                val b = boxes[i]
+                                val end = if (b.endMs > 0L) b.endMs else durationMs
+                                touchDownRangeLen = (end - b.startMs).coerceAtLeast(minRangeMs)
+                            }
                         }
                         if (activeTrackIndex != -1) {
                             selectedIndex = activeTrackIndex
@@ -262,7 +399,6 @@ class WatermarkTimelineView @JvmOverloads constructor(
                     }
                 }
 
-                // Otherwise scrub playhead directly
                 touchAction = TouchAction.SCRUB
                 parent?.requestDisallowInterceptTouchEvent(true)
                 val targetMs = xToMs(x)
