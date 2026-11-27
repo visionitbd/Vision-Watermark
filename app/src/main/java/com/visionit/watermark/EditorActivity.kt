@@ -240,8 +240,8 @@ class EditorActivity : AppCompatActivity() {
                 binding.areaBarRow.visibility = View.GONE
                 binding.timelineCard.visibility = View.GONE
                 binding.speedControlsPanel.visibility = View.VISIBLE
-                binding.reverseActionsRow.visibility = View.VISIBLE
-                binding.tvSpeedLabel.text = "Plays backwards from end to start • Adjust speed below"
+                binding.reverseActionsRow.visibility = View.GONE
+                binding.tvSpeedLabel.text = "Instant Reverse Active • Adjust Speed"
                 speedFactor = 1.0f
                 binding.seekSpeed.progress = 10
                 updateSpeedUi()
@@ -481,10 +481,9 @@ class EditorActivity : AppCompatActivity() {
         }
 
         binding.btnPlayPause.setOnClickListener {
-            if (isReversePreviewActive) {
-                isReversePreviewActive = false
-                binding.btnPreviewReverse.text = "Preview Backwards"
-                binding.btnPlayPause.setImageResource(R.drawable.ic_play)
+            if (quickTool == "REVERSE") {
+                isReversePreviewActive = !isReversePreviewActive
+                binding.btnPlayPause.setImageResource(if (isReversePreviewActive) R.drawable.ic_pause else R.drawable.ic_play)
                 return@setOnClickListener
             }
             val p = player ?: return@setOnClickListener
@@ -698,10 +697,15 @@ class EditorActivity : AppCompatActivity() {
                     }
                 })
                 prepare()
-                playWhenReady = true
+                playWhenReady = (quickTool != "REVERSE")
             }
             player = exo
             binding.playerView.player = exo
+            if (quickTool == "REVERSE") {
+                isReversePreviewActive = true
+                reversePreviewPosMs = videoDurationMs
+                binding.btnPlayPause.setImageResource(R.drawable.ic_pause)
+            }
             handler.post(progressUpdater)
         }
     }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.visionit.watermark"
         minSdk = 24
         targetSdk = 35
-        versionCode = 9
-        versionName = "9.0"
+        versionCode = 10
+        versionName = "10.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a")

@@ -32,7 +32,7 @@ object WatermarkProcessor {
         quickToolCommand: String? = null,
         hasAudio: Boolean = true,
         muteAudio: Boolean = false,
-        targetResolution: String = "ORIGINAL", // ORIGINAL, 1080P, 720P
+        targetResolution: String = "ORIGINAL",
         trimSegments: List<TrimSegment> = emptyList(),
         speedFactor: Float = 1f,
         overlayPngPath: String? = null,
@@ -53,6 +53,23 @@ object WatermarkProcessor {
         }
 
         val effectiveAudio = hasAudio && !muteAudio
+        val commandArgs = if (quickToolCommand != null) {
+            buildQuickToolArgs(
+                inputPath = inputPath,
+                outputPath = outputFile.absolutePath,
+                cmd = quickToolCommand,
+                hasAudio = effectiveAudio,
+                targetResolution = targetResolution,
+                trimSegments = trimSegments,
+                speedFactor = speedFactor,
+                overlayPngPath = overlayPngPath,
+                overlayX = overlayX,
+                overlayY = overlayY
+            )
+        } else {
+            buildFfmpegArgs(inputPath, outputFile.absolutePath, mode, boxes, targetResolution)
+        }
+
         val totalTrimMs = trimSegments.sumOf { ((it.endSec - it.startSec) * 1000f).toLong().coerceAtLeast(100L) }
         val effectiveDurationMs = when (quickToolCommand) {
             "TRIM" -> totalTrimMs.coerceAtLeast(500L)
@@ -60,64 +77,35 @@ object WatermarkProcessor {
             else -> durationMs
         }
 
-        fun runAttempt(useHardwareEncoder: Boolean) {
-            val commandArgs = if (quickToolCommand != null) {
-                buildQuickToolArgs(
-                    inputPath = inputPath,
-                    outputPath = outputFile.absolutePath,
-                    cmd = quickToolCommand,
-                    hasAudio = effectiveAudio,
-                    targetResolution = targetResolution,
-                    trimSegments = trimSegments,
-                    speedFactor = speedFactor,
-                    overlayPngPath = overlayPngPath,
-                    overlayX = overlayX,
-                    overlayY = overlayY,
-                    useHw = useHardwareEncoder
-                )
-            } else {
-                buildFfmpegArgs(inputPath, outputFile.absolutePath, mode, boxes, targetResolution, useHw = useHardwareEncoder)
-            }
-
-            activeSession = FFmpegKit.executeWithArgumentsAsync(
-                commandArgs,
-                { session ->
-                    activeSession = null
-                    val returnCode = session.returnCode
-                    when {
-                        ReturnCode.isSuccess(returnCode) -> {
-                            onProgress(100)
-                            onComplete(true, null)
-                        }
-                        ReturnCode.isCancel(returnCode) -> {
-                            outputFile.delete()
-                            onComplete(false, "Cancelled")
-                        }
-                        useHardwareEncoder -> {
-                            // Automatic instant fallback to ultrafast CPU libx264 if OEM MediaCodec rejects format
-                            outputFile.delete()
-                            runAttempt(useHardwareEncoder = false)
-                        }
-                        else -> {
-                            outputFile.delete()
-                            onComplete(false, session.failStackTrace ?: "FFmpeg failed (code $returnCode)")
-                        }
+        activeSession = FFmpegKit.executeWithArgumentsAsync(
+            commandArgs,
+            { session ->
+                activeSession = null
+                val returnCode = session.returnCode
+                when {
+                    ReturnCode.isSuccess(returnCode) -> {
+                        onProgress(100)
+                        onComplete(true, null)
                     }
-                },
-                { /* logs */ },
-                { stats ->
-                    if (effectiveDurationMs > 0) {
-                        val timeMs = stats.time.toLong()
-                        val pct = ((timeMs * 100L) / effectiveDurationMs).toInt().coerceIn(0, 99)
-                        onProgress(pct)
+                    ReturnCode.isCancel(returnCode) -> {
+                        outputFile.delete()
+                        onComplete(false, "Cancelled")
+                    }
+                    else -> {
+                        outputFile.delete()
+                        onComplete(false, session.failStackTrace ?: "FFmpeg failed (code $returnCode)")
                     }
                 }
-            )
-        }
-
-        // Try Android Hardware GPU Encoder first (4x–8x faster!); auto-falls back if unsupported
-        val canUseHw = quickToolCommand != "TO_AUDIO" && quickToolCommand != "COMPRESS_MAX" && quickToolCommand != "COMPRESS_BALANCED"
-        runAttempt(useHardwareEncoder = canUseHw)
+            },
+            { /* logs */ },
+            { stats ->
+                if (effectiveDurationMs > 0) {
+                    val timeMs = stats.time.toLong()
+                    val pct = ((timeMs * 100L) / effectiveDurationMs).toInt().coerceIn(0, 99)
+                    onProgress(pct)
+                }
+            }
+        )
     }
 
     private fun scaleFilterFor(targetResolution: String): String? {
@@ -128,26 +116,15 @@ object WatermarkProcessor {
         }
     }
 
-    private fun fastVideoEncodeArgs(crf: String = "23", useHw: Boolean = false): List<String> {
-        return if (useHw) {
-            listOf(
-                "-c:v", "h264_mediacodec",
-                "-b:v", "4500k",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart"
-            )
-        } else {
-            listOf(
-                "-threads", "0",
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-tune", "fastdecode",
-                "-crf", crf,
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart"
-            )
-        }
-    }
+    // Zero-hang, maximum-speed multi-threaded libx264 ultrafast encoding
+    private fun ultrafastArgs(crf: String = "24"): List<String> = listOf(
+        "-threads", "0",
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", crf,
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart"
+    )
 
     private fun buildQuickToolArgs(
         inputPath: String,
@@ -159,8 +136,7 @@ object WatermarkProcessor {
         speedFactor: Float,
         overlayPngPath: String?,
         overlayX: Int,
-        overlayY: Int,
-        useHw: Boolean = false
+        overlayY: Int
     ): Array<String> {
         val scale = scaleFilterFor(targetResolution)
 
@@ -172,11 +148,11 @@ object WatermarkProcessor {
                     else -> "hflip"
                 }
                 val vf = if (scale != null) "$flip,$scale" else flip
-                (listOf("-y", "-i", inputPath, "-vf", vf) + fastVideoEncodeArgs(useHw = useHw) + listOf("-c:a", "copy", outputPath)).toTypedArray()
+                (listOf("-y", "-i", inputPath, "-vf", vf) + ultrafastArgs() + listOf("-c:a", "copy", outputPath)).toTypedArray()
             }
-            "COMPRESS_LIGHT" -> (listOf("-y", "-i", inputPath) + fastVideoEncodeArgs("25") + listOf("-c:a", "copy", outputPath)).toTypedArray()
-            "COMPRESS_BALANCED" -> (listOf("-y", "-i", inputPath, "-vf", "scale='min(1280,iw)':-2") + fastVideoEncodeArgs("28") + listOf("-c:a", "copy", outputPath)).toTypedArray()
-            "COMPRESS_MAX" -> (listOf("-y", "-i", inputPath, "-vf", "scale='min(854,iw)':-2") + fastVideoEncodeArgs("32") + listOf("-c:a", "copy", outputPath)).toTypedArray()
+            "COMPRESS_LIGHT" -> (listOf("-y", "-i", inputPath) + ultrafastArgs("26") + listOf("-c:a", "copy", outputPath)).toTypedArray()
+            "COMPRESS_BALANCED" -> (listOf("-y", "-i", inputPath, "-vf", "scale='min(1280,iw)':-2") + ultrafastArgs("29") + listOf("-c:a", "copy", outputPath)).toTypedArray()
+            "COMPRESS_MAX" -> (listOf("-y", "-i", inputPath, "-vf", "scale='min(854,iw)':-2") + ultrafastArgs("33") + listOf("-c:a", "copy", outputPath)).toTypedArray()
 
             "TRIM" -> {
                 val sorted = trimSegments.sortedBy { it.startSec }
@@ -184,12 +160,12 @@ object WatermarkProcessor {
                     val seg = sorted.firstOrNull() ?: TrimSegment(0f, 10f)
                     val sStr = String.format(Locale.US, "%.2f", seg.startSec.coerceAtLeast(0f))
                     val dStr = String.format(Locale.US, "%.2f", (seg.endSec - seg.startSec).coerceAtLeast(0.4f))
-                    // INSTANT zero-reencode stream copy when Original resolution!
+                    // INSTANT zero-reencode stream copy (<0.5 sec!)
                     if (scale == null) {
-                        arrayOf("-y", "-ss", sStr, "-i", inputPath, "-t", dStr, "-c", "copy", "-movflags", "+faststart", outputPath)
+                        arrayOf("-y", "-ss", sStr, "-i", inputPath, "-t", dStr, "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", outputPath)
                     } else {
                         val args = mutableListOf("-y", "-ss", sStr, "-i", inputPath, "-t", dStr, "-vf", scale)
-                        args += fastVideoEncodeArgs(useHw = useHw)
+                        args += ultrafastArgs()
                         if (hasAudio) args += listOf("-c:a", "copy") else args += "-an"
                         args += outputPath
                         args.toTypedArray()
@@ -216,7 +192,7 @@ object WatermarkProcessor {
                     }
                     val args = mutableListOf("-y", "-i", inputPath, "-filter_complex", fc.toString(), "-map", "[vout]")
                     if (hasAudio) args += listOf("-map", "[aout]", "-c:a", "aac", "-b:a", "192k") else args += "-an"
-                    args += fastVideoEncodeArgs(useHw = useHw)
+                    args += ultrafastArgs()
                     args += outputPath
                     args.toTypedArray()
                 }
@@ -229,7 +205,7 @@ object WatermarkProcessor {
                 val vf = if (scale != null) "setpts=$ptsFactor*PTS,$scale" else "setpts=$ptsFactor*PTS"
                 val args = mutableListOf("-y", "-i", inputPath, "-vf", vf)
                 if (hasAudio) args += listOf("-af", "atempo=$tempoStr", "-c:a", "aac", "-b:a", "192k") else args += "-an"
-                args += fastVideoEncodeArgs(useHw = useHw)
+                args += ultrafastArgs()
                 args += outputPath
                 args.toTypedArray()
             }
@@ -242,7 +218,7 @@ object WatermarkProcessor {
                     "[0:v][1:v]overlay=$overlayX:$overlayY[vout]"
                 }
                 (listOf("-y", "-i", inputPath, "-i", png, "-filter_complex", fc, "-map", "[vout]", "-map", "0:a?") +
-                    fastVideoEncodeArgs(useHw = useHw) + listOf("-c:a", "copy", outputPath)).toTypedArray()
+                    ultrafastArgs() + listOf("-c:a", "copy", outputPath)).toTypedArray()
             }
 
             "TO_AUDIO" -> arrayOf("-y", "-i", inputPath, "-vn", "-c:a", "aac", "-b:a", "192k", outputPath)
@@ -260,7 +236,7 @@ object WatermarkProcessor {
                 } else {
                     args += "-an"
                 }
-                args += fastVideoEncodeArgs(useHw = useHw)
+                args += ultrafastArgs()
                 args += outputPath
                 args.toTypedArray()
             }
@@ -273,8 +249,7 @@ object WatermarkProcessor {
         outputPath: String,
         mode: RemovalMode,
         boxes: List<WatermarkOverlayView.PixelBox>,
-        targetResolution: String,
-        useHw: Boolean = false
+        targetResolution: String
     ): Array<String> {
         val args = mutableListOf("-y", "-i", inputPath)
         val scale = scaleFilterFor(targetResolution)
@@ -319,7 +294,7 @@ object WatermarkProcessor {
             }
         }
 
-        args += fastVideoEncodeArgs(useHw = useHw)
+        args += ultrafastArgs()
         args += listOf("-c:a", "copy", outputPath)
         return args.toTypedArray()
     }
