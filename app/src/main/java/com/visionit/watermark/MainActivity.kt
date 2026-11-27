@@ -1,17 +1,24 @@
 package com.visionit.watermark
 
 import android.Manifest
+import android.app.Dialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
+import android.view.Window
+import android.widget.TextView
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.visionit.watermark.databinding.ActivityMainBinding
 import com.visionit.watermark.ui.RecentExportsAdapter
 import com.visionit.watermark.util.GalleryHelper
@@ -28,7 +35,6 @@ class MainActivity : AppCompatActivity() {
     private var pendingQuickTool: String? = null
     private var pendingPhotoMode: String = "SMART_ERASE"
 
-    // Visual Gallery Picker for Videos (opens phone Gallery directly instead of Drive/Documents!)
     private val pickVideoLauncher = registerForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -45,7 +51,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Visual Gallery Picker for Photos
     private val pickPhotoLauncher = registerForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -75,8 +80,8 @@ class MainActivity : AppCompatActivity() {
             onShare = { GalleryHelper.shareVideo(this, it.uri) }
         )
 
-        // Premium 2-column Gallery Grid for My Videos!
-        binding.rvRecentExports.layoutManager = GridLayoutManager(this, 2)
+        // Single-column Premium Horizontal Cards for My Videos!
+        binding.rvRecentExports.layoutManager = LinearLayoutManager(this)
         binding.rvRecentExports.adapter = adapter
 
         // Top bar Settings & Premium Crown
@@ -97,15 +102,15 @@ class MainActivity : AppCompatActivity() {
         binding.toolEditText.setOnClickListener { openPhotoPicker("EDIT_TEXT") }
         binding.toolCrop.setOnClickListener { openVideoPicker("CROP", null) }
 
-        // Row 2
+        // Row 2 (Flip & Compress now support BOTH Video & Photo!)
         binding.toolBlur.setOnClickListener { openVideoPicker("BLUR", null) }
-        binding.toolFlip.setOnClickListener { openVideoPicker("SMART_ERASE", "FLIP") }
-        binding.toolCompress.setOnClickListener { openVideoPicker("SMART_ERASE", "COMPRESS") }
+        binding.toolFlip.setOnClickListener { showMediaTypeChooser("Flip Video / Photo", "FLIP", "FLIP") }
+        binding.toolCompress.setOnClickListener { showMediaTypeChooser("Compress Video / Photo", "COMPRESS", "COMPRESS") }
         binding.toolTrim.setOnClickListener { openVideoPicker("SMART_ERASE", "TRIM") }
 
-        // Row 3
+        // Row 3 (Add Text now supports BOTH Video & Photo!)
         binding.toolSpeed.setOnClickListener { openVideoPicker("SMART_ERASE", "SPEED") }
-        binding.toolAddLogo.setOnClickListener { openVideoPicker("SMART_ERASE", "ADD_TEXT") }
+        binding.toolAddLogo.setOnClickListener { showMediaTypeChooser("Add Text / Logo", "ADD_TEXT", "ADD_TEXT") }
         binding.toolAudio.setOnClickListener { openVideoPicker("SMART_ERASE", "TO_AUDIO") }
         binding.toolReverse.setOnClickListener { openVideoPicker("SMART_ERASE", "REVERSE") }
 
@@ -114,6 +119,27 @@ class MainActivity : AppCompatActivity() {
         binding.navVideos.setOnClickListener { switchTab(showHome = false) }
 
         requestGalleryPermissionsIfNeeded()
+    }
+
+    private fun showMediaTypeChooser(title: String, videoTool: String, photoTool: String) {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_choose_media, null)
+        dialog.setContentView(view)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val w = (resources.displayMetrics.widthPixels * 0.84f).toInt()
+        dialog.window?.setLayout(w, ViewGroup.LayoutParams.WRAP_CONTENT)
+
+        view.findViewById<TextView>(R.id.tvChooserTitle).text = title
+        view.findViewById<TextView>(R.id.btnPickVideoOpt).setOnClickListener {
+            dialog.dismiss()
+            openVideoPicker("SMART_ERASE", videoTool)
+        }
+        view.findViewById<TextView>(R.id.btnPickPhotoOpt).setOnClickListener {
+            dialog.dismiss()
+            openPhotoPicker(photoTool)
+        }
+        dialog.show()
     }
 
     private fun openVideoPicker(initialMode: String, quickTool: String?) {

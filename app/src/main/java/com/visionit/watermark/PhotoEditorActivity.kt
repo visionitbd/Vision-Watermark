@@ -2,6 +2,12 @@ package com.visionit.watermark
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.text.Editable
+import android.text.TextWatcher
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import java.io.ByteArrayOutputStream
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -47,6 +53,31 @@ class PhotoEditorActivity : AppCompatActivity() {
     private val bitmapUndoStack = ArrayDeque<Bitmap>()
     private var currentMode = RemovalMode.SMART_ERASE
     private var isEditTextMode = false
+    private var specialPhotoTool: String? = null
+    private var photoFlipH = true
+    private var photoFlipV = false
+    private var photoFlipOriginal = false
+    private var photoCompressQuality = 65
+    private var photoWmTypeface: Typeface = Typeface.DEFAULT_BOLD
+    private var photoWmColor: Int = Color.WHITE
+    private var photoWmLogo: Bitmap? = null
+
+    private val pickPhotoLogoLauncher = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            lifecycleScope.launch {
+                val bmp = withContext(Dispatchers.IO) {
+                    try { contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } } catch (_: Exception) { null }
+                }
+                if (bmp != null) {
+                    photoWmLogo = bmp
+                    binding.photoOverlay.previewLogoBitmap = bmp
+                    binding.btnPhotoPickLogo.text = "Clear Logo"
+                }
+            }
+        }
+    }
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,8 +92,11 @@ class PhotoEditorActivity : AppCompatActivity() {
         }
 
         setupControls()
-        if (intent.getStringExtra(EXTRA_INITIAL_MODE) == "EDIT_TEXT") {
-            enterEditTextMode()
+        when (intent.getStringExtra(EXTRA_INITIAL_MODE)) {
+            "EDIT_TEXT" -> enterEditTextMode()
+            "FLIP" -> enterSpecialPhotoTool("FLIP")
+            "COMPRESS" -> enterSpecialPhotoTool("COMPRESS")
+            "ADD_TEXT" -> enterSpecialPhotoTool("ADD_TEXT")
         }
         loadPhoto(Uri.parse(uriStr))
     }
@@ -140,12 +174,79 @@ class PhotoEditorActivity : AppCompatActivity() {
             }
         }
 
+        // Photo Flip buttons
+        binding.btnPhotoFlipH.setOnClickListener {
+            photoFlipOriginal = false
+            photoFlipH = !photoFlipH
+            if (!photoFlipH && !photoFlipV) photoFlipH = true
+            updatePhotoFlipPreview()
+        }
+        binding.btnPhotoFlipV.setOnClickListener {
+            photoFlipOriginal = false
+            photoFlipV = !photoFlipV
+            if (!photoFlipH && !photoFlipV) photoFlipV = true
+            updatePhotoFlipPreview()
+        }
+        binding.btnPhotoFlipOrig.setOnClickListener {
+            photoFlipOriginal = !photoFlipOriginal
+            updatePhotoFlipPreview()
+        }
+
+        // Photo Compress buttons
+        binding.btnPhotoCompHigh.setOnClickListener { photoCompressQuality = 85; updatePhotoCompressUi() }
+        binding.btnPhotoCompMed.setOnClickListener { photoCompressQuality = 65; updatePhotoCompressUi() }
+        binding.btnPhotoCompLow.setOnClickListener { photoCompressQuality = 40; updatePhotoCompressUi() }
+
+        // Photo Add Text / Logo controls
+        binding.etPhotoWmText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                binding.photoOverlay.previewText = s?.toString().orEmpty()
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        binding.btnPhotoPickLogo.setOnClickListener {
+            if (photoWmLogo != null) {
+                photoWmLogo = null
+                binding.photoOverlay.previewLogoBitmap = null
+                binding.btnPhotoPickLogo.text = "+ Logo"
+            } else {
+                pickPhotoLogoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
+        }
+        binding.pFontHindBold.setOnClickListener { selectPhotoFont("HIND_BOLD") }
+        binding.pFontHindSemi.setOnClickListener { selectPhotoFont("HIND_SEMI") }
+        binding.pFontSans.setOnClickListener { selectPhotoFont("ENG_SANS") }
+        binding.pFontSerif.setOnClickListener { selectPhotoFont("ENG_SERIF") }
+        binding.pFontItalic.setOnClickListener { selectPhotoFont("ENG_ITALIC") }
+        binding.pFontImpact.setOnClickListener { selectPhotoFont("ENG_CONDENSED") }
+        binding.pFontMono.setOnClickListener { selectPhotoFont("ENG_MONO") }
+
+        binding.pColorWhite.setOnClickListener { selectPhotoColor(Color.WHITE) }
+        binding.pColorYellow.setOnClickListener { selectPhotoColor(Color.parseColor("#FFD600")) }
+        binding.pColorCyan.setOnClickListener { selectPhotoColor(Color.parseColor("#00E5FF")) }
+        binding.pColorRed.setOnClickListener { selectPhotoColor(Color.parseColor("#FF5C72")) }
+        binding.pColorBlack.setOnClickListener { selectPhotoColor(Color.BLACK) }
+
         binding.btnSavePhoto.setOnClickListener {
-            val bmp = currentBitmap ?: return@setOnClickListener
+            val srcBmp = currentBitmap ?: return@setOnClickListener
             lifecycleScope.launch {
                 val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                val finalBmp = withContext(Dispatchers.Default) {
+                    when (specialPhotoTool) {
+                        "FLIP" -> {
+                            val m = Matrix().apply {
+                                postScale(if (photoFlipH) -1f else 1f, if (photoFlipV) -1f else 1f)
+                            }
+                            Bitmap.createBitmap(srcBmp, 0, 0, srcBmp.width, srcBmp.height, m, true)
+                        }
+                        "ADD_TEXT" -> bakeWatermarkOnPhoto(srcBmp)
+                        else -> srcBmp
+                    }
+                }
+                val quality = if (specialPhotoTool == "COMPRESS") photoCompressQuality else 96
                 val uri = withContext(Dispatchers.IO) {
-                    GalleryHelper.savePhotoToGallery(this@PhotoEditorActivity, bmp, "VWatermark_$stamp.jpg")
+                    GalleryHelper.savePhotoToGallery(this@PhotoEditorActivity, finalBmp, "VWatermark_$stamp.jpg", quality)
                 }
                 if (uri != null) {
                     Toast.makeText(this@PhotoEditorActivity, "Saved to Gallery!", Toast.LENGTH_SHORT).show()
@@ -155,6 +256,131 @@ class PhotoEditorActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun enterSpecialPhotoTool(tool: String) {
+        specialPhotoTool = tool
+        binding.photoModeChipsRow.visibility = View.GONE
+        binding.photoBottomControls.visibility = View.GONE
+        binding.textOverlay.visibility = View.GONE
+        binding.tvEditTextHint.visibility = View.GONE
+
+        when (tool) {
+            "FLIP" -> {
+                binding.tvPhotoTitle.text = "Flip Photo"
+                binding.photoOverlay.visibility = View.GONE
+                binding.photoFlipPanel.visibility = View.VISIBLE
+                updatePhotoFlipPreview()
+            }
+            "COMPRESS" -> {
+                binding.tvPhotoTitle.text = "Compress Photo"
+                binding.photoOverlay.visibility = View.GONE
+                binding.photoCompressPanel.visibility = View.VISIBLE
+                updatePhotoCompressUi()
+            }
+            "ADD_TEXT" -> {
+                binding.tvPhotoTitle.text = "Add Text / Logo"
+                binding.photoOverlay.visibility = View.VISIBLE
+                binding.photoOverlay.isAddOverlayMode = true
+                binding.photoAddTextPanel.visibility = View.VISIBLE
+                selectPhotoFont("HIND_BOLD")
+                selectPhotoColor(Color.WHITE)
+                binding.photoOverlay.previewText = binding.etPhotoWmText.text?.toString().orEmpty()
+            }
+        }
+    }
+
+    private fun updatePhotoFlipPreview() {
+        binding.ivPhotoPreview.scaleX = if (!photoFlipOriginal && photoFlipH) -1f else 1f
+        binding.ivPhotoPreview.scaleY = if (!photoFlipOriginal && photoFlipV) -1f else 1f
+        styleModeChip(binding.btnPhotoFlipH, !photoFlipOriginal && photoFlipH)
+        styleModeChip(binding.btnPhotoFlipV, !photoFlipOriginal && photoFlipV)
+        styleModeChip(binding.btnPhotoFlipOrig, photoFlipOriginal)
+    }
+
+    private fun updatePhotoCompressUi() {
+        styleModeChip(binding.btnPhotoCompHigh, photoCompressQuality == 85)
+        styleModeChip(binding.btnPhotoCompMed, photoCompressQuality == 65)
+        styleModeChip(binding.btnPhotoCompLow, photoCompressQuality == 40)
+        val bmp = currentBitmap ?: return
+        lifecycleScope.launch {
+            val kb = withContext(Dispatchers.Default) {
+                val baos = ByteArrayOutputStream()
+                bmp.compress(Bitmap.CompressFormat.JPEG, photoCompressQuality, baos)
+                baos.size() / 1024
+            }
+            binding.tvPhotoCompInfo.text = "Estimated size: ${kb} KB (Quality $photoCompressQuality%)"
+        }
+    }
+
+    private fun selectPhotoFont(key: String) {
+        photoWmTypeface = try {
+            when (key) {
+                "HIND_BOLD" -> Typeface.createFromAsset(assets, "fonts/HindSiliguri-Bold.ttf")
+                "HIND_SEMI" -> Typeface.createFromAsset(assets, "fonts/HindSiliguri-SemiBold.ttf")
+                "ENG_SANS" -> Typeface.createFromAsset(assets, "fonts/eng_sans_bold.ttf")
+                "ENG_SERIF" -> Typeface.createFromAsset(assets, "fonts/eng_serif_bold.ttf")
+                "ENG_ITALIC" -> Typeface.createFromAsset(assets, "fonts/eng_italic_bold.ttf")
+                "ENG_CONDENSED" -> Typeface.createFromAsset(assets, "fonts/eng_condensed_bold.ttf")
+                "ENG_MONO" -> Typeface.createFromAsset(assets, "fonts/eng_mono_bold.ttf")
+                else -> Typeface.DEFAULT_BOLD
+            }
+        } catch (_: Exception) { Typeface.DEFAULT_BOLD }
+        binding.photoOverlay.previewTypeface = photoWmTypeface
+        styleModeChip(binding.pFontHindBold, key == "HIND_BOLD")
+        styleModeChip(binding.pFontHindSemi, key == "HIND_SEMI")
+        styleModeChip(binding.pFontSans, key == "ENG_SANS")
+        styleModeChip(binding.pFontSerif, key == "ENG_SERIF")
+        styleModeChip(binding.pFontItalic, key == "ENG_ITALIC")
+        styleModeChip(binding.pFontImpact, key == "ENG_CONDENSED")
+        styleModeChip(binding.pFontMono, key == "ENG_MONO")
+    }
+
+    private fun selectPhotoColor(color: Int) {
+        photoWmColor = color
+        binding.photoOverlay.previewTextColor = color
+        styleModeChip(binding.pColorWhite, color == Color.WHITE)
+        styleModeChip(binding.pColorYellow, color == Color.parseColor("#FFD600"))
+        styleModeChip(binding.pColorCyan, color == Color.parseColor("#00E5FF"))
+        styleModeChip(binding.pColorRed, color == Color.parseColor("#FF5C72"))
+        styleModeChip(binding.pColorBlack, color == Color.BLACK)
+        if (color != Color.parseColor("#FFD600")) binding.pColorYellow.setTextColor(Color.parseColor("#FFD600"))
+        if (color != Color.parseColor("#00E5FF")) binding.pColorCyan.setTextColor(Color.parseColor("#00E5FF"))
+        if (color != Color.parseColor("#FF5C72")) binding.pColorRed.setTextColor(Color.parseColor("#FF5C72"))
+    }
+
+    private fun bakeWatermarkOnPhoto(src: Bitmap): Bitmap {
+        val out = src.copy(Bitmap.Config.ARGB_8888, true)
+        val boxes = binding.photoOverlay.computePixelBoxes(out.width, out.height)
+        if (boxes.isEmpty()) return out
+        val b = boxes.first()
+        val canvas = Canvas(out)
+        val logo = photoWmLogo
+        if (logo != null && !logo.isRecycled) {
+            val dst = Rect(b.x, b.y, b.x + b.w, b.y + b.h)
+            canvas.drawBitmap(logo, null, dst, Paint(Paint.FILTER_BITMAP_FLAG))
+        } else {
+            val text = binding.etPhotoWmText.text?.toString()?.trim().orEmpty()
+            if (text.isNotBlank()) {
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = photoWmColor
+                    typeface = photoWmTypeface
+                    textAlign = Paint.Align.CENTER
+                    setShadowLayer(6f, 2f, 2f, Color.argb(200, 0, 0, 0))
+                }
+                var sz = (b.h * 0.62f).coerceAtLeast(20f)
+                paint.textSize = sz
+                val measured = paint.measureText(text)
+                if (measured > b.w - 16f && measured > 0f) {
+                    sz *= ((b.w - 16f) / measured)
+                    paint.textSize = sz.coerceAtLeast(14f)
+                }
+                val fm = paint.fontMetrics
+                val baseY = b.y + b.h / 2f - (fm.ascent + fm.descent) / 2f
+                canvas.drawText(text, b.x + b.w / 2f, baseY, paint)
+            }
+        }
+        return out
     }
 
     private fun styleModeChip(tv: TextView, active: Boolean) {
@@ -468,6 +694,8 @@ class PhotoEditorActivity : AppCompatActivity() {
             binding.tvPhotoMeta.text = "${bmp.width}×${bmp.height}"
             if (isEditTextMode) {
                 scanTextInPhoto(bmp)
+            } else if (specialPhotoTool == "COMPRESS") {
+                updatePhotoCompressUi()
             }
         }
     }

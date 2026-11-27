@@ -62,6 +62,7 @@ class EditorActivity : AppCompatActivity() {
     private var quickTool: String? = null
     private var flipH = true
     private var flipV = false
+    private var showFlipOriginal = false
     private var compressLevel = "COMPRESS_BALANCED"
     private var speedFactor = 1.0f
     private var targetResolution = "ORIGINAL"
@@ -193,7 +194,7 @@ class EditorActivity : AppCompatActivity() {
                 binding.watermarkOverlay.visibility = View.GONE
                 binding.areaBarRow.visibility = View.GONE
                 binding.tvQuickToolBanner.visibility = View.VISIBLE
-                binding.tvQuickToolBanner.text = "Move playhead & tap Split to cut like CapCut, then Delete unwanted parts"
+                binding.tvQuickToolBanner.text = "1. Drag playhead to cut point  →  2. Tap Split Here  →  3. Select & Delete Clip"
                 binding.timelineCard.visibility = View.VISIBLE
                 binding.capcutTrimBar.visibility = View.VISIBLE
             }
@@ -240,7 +241,7 @@ class EditorActivity : AppCompatActivity() {
                 binding.timelineCard.visibility = View.GONE
                 binding.speedControlsPanel.visibility = View.VISIBLE
                 binding.reverseActionsRow.visibility = View.VISIBLE
-                binding.tvSpeedLabel.text = "Reverse Speed (0.5x Slow – 2.0x Fast)"
+                binding.tvSpeedLabel.text = "Plays backwards from end to start • Adjust speed below"
                 speedFactor = 1.0f
                 binding.seekSpeed.progress = 10
                 updateSpeedUi()
@@ -256,10 +257,11 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun applyFlipPreview() {
-        binding.playerView.scaleX = if (flipH) -1f else 1f
-        binding.playerView.scaleY = if (flipV) -1f else 1f
-        styleChip(binding.btnFlipHorizontal, flipH)
-        styleChip(binding.btnFlipVertical, flipV)
+        binding.playerView.scaleX = if (!showFlipOriginal && flipH) -1f else 1f
+        binding.playerView.scaleY = if (!showFlipOriginal && flipV) -1f else 1f
+        styleChip(binding.btnFlipHorizontal, !showFlipOriginal && flipH)
+        styleChip(binding.btnFlipVertical, !showFlipOriginal && flipV)
+        styleChip(binding.btnFlipOriginal, showFlipOriginal)
     }
 
     private fun updateCompressChips() {
@@ -373,14 +375,25 @@ class EditorActivity : AppCompatActivity() {
 
         // Flip buttons
         binding.btnFlipHorizontal.setOnClickListener {
+            showFlipOriginal = false
             flipH = !flipH
             if (!flipH && !flipV) flipH = true
             applyFlipPreview()
         }
         binding.btnFlipVertical.setOnClickListener {
+            showFlipOriginal = false
             flipV = !flipV
             if (!flipH && !flipV) flipV = true
             applyFlipPreview()
+        }
+        binding.btnFlipOriginal.setOnClickListener {
+            showFlipOriginal = !showFlipOriginal
+            applyFlipPreview()
+            Toast.makeText(
+                this,
+                if (showFlipOriginal) "Showing Original (Before)" else "Showing Flipped Preview",
+                Toast.LENGTH_SHORT
+            ).show()
         }
 
         // Compress buttons

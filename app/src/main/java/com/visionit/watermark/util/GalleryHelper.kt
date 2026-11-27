@@ -58,7 +58,7 @@ object GalleryHelper {
         }
     }
 
-    fun savePhotoToGallery(context: Context, bitmap: Bitmap, displayName: String): Uri? {
+    fun savePhotoToGallery(context: Context, bitmap: Bitmap, displayName: String, quality: Int = 96): Uri? {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
@@ -74,7 +74,7 @@ object GalleryHelper {
                 val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                     ?: return null
                 resolver.openOutputStream(uri)?.use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 96, out)
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
                 }
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
@@ -87,7 +87,7 @@ object GalleryHelper {
                 )
                 if (!picDir.exists()) picDir.mkdirs()
                 val dest = File(picDir, displayName)
-                dest.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 96, it) }
+                dest.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }
                 FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", dest)
             }
         } catch (e: Exception) {
