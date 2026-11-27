@@ -690,6 +690,9 @@ class EditorActivity : AppCompatActivity() {
             binding.playerView.player = exo
 
             if (quickTool == "REVERSE") {
+                exo.setMediaItem(MediaItem.fromUri(videoUri))
+                exo.prepare()
+                exo.playWhenReady = false
                 prepareInstantReversedVideo(exo)
             } else {
                 exo.setMediaItem(MediaItem.fromUri(videoUri))
@@ -718,9 +721,9 @@ class EditorActivity : AppCompatActivity() {
             mode = currentMode,
             boxes = emptyList(),
             durationMs = videoDurationMs,
-            quickToolCommand = "REVERSE",
-            hasAudio = videoHasAudio,
-            targetResolution = "720P",
+            quickToolCommand = "REVERSE_PROXY",
+            hasAudio = false,
+            targetResolution = "ORIGINAL",
             speedFactor = 1.0f,
             onProgress = { pct ->
                 runOnUiThread {
@@ -820,28 +823,7 @@ class EditorActivity : AppCompatActivity() {
         player?.pause()
         binding.btnPlayPause.setImageResource(R.drawable.ic_play)
 
-        // Instant zero-wait Export if Reverse video is already built at 1.0x Original!
-        val readyRev = reversedReadyFile
-        if (quickTool == "REVERSE" && readyRev != null && readyRev.exists() &&
-            kotlin.math.abs(speedFactor - 1.0f) < 0.03f && targetResolution == "ORIGINAL"
-        ) {
-            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val finalName = "VWatermark_Rev_$stamp.mp4"
-            binding.processingOverlay.visibility = View.VISIBLE
-            binding.btnCancelProcess.visibility = View.GONE
-            binding.circularProgress.progress = 100
-            binding.tvPercent.text = "100%"
-            binding.tvProcessBrand.text = getString(R.string.app_title)
-            binding.tvProcessStatus.text = "Done! Saved to Gallery"
-            lifecycleScope.launch {
-                savedOutputUri = withContext(Dispatchers.IO) {
-                    GalleryHelper.saveVideoToGallery(this@EditorActivity, readyRev, finalName)
-                }
-                binding.tvSavedLabel.text = getString(R.string.saved_to_gallery)
-                binding.resultCard.visibility = View.VISIBLE
-            }
-            return
-        }
+
 
         val pixelBoxes = binding.watermarkOverlay.computePixelBoxes(videoWidth, videoHeight)
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())

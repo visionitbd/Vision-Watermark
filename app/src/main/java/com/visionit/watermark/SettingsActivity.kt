@@ -17,7 +17,7 @@ class SettingsActivity : AppCompatActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.tvVersion.text = "Version 12.0"
+        binding.tvVersion.text = "Version 13.0"
         binding.btnBack.setOnClickListener { finish() }
 
         binding.btnGetPremium.setOnClickListener {

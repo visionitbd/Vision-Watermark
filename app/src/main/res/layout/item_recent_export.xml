@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="92dp"
-    android:layout_marginBottom="12dp"
+    android:layout_height="84dp"
+    android:layout_marginBottom="10dp"
     android:background="@drawable/bg_glass_card"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="10dp">
+    android:paddingHorizontal="10dp"
+    android:paddingVertical="8dp">
 
-    <!-- Rounded Video Thumbnail with Duration Pill -->
+    <!-- Compact Rounded Thumbnail with Duration Pill -->
     <FrameLayout
-        android:layout_width="124dp"
-        android:layout_height="72dp">
+        android:layout_width="108dp"
+        android:layout_height="68dp">
 
         <ImageView
             android:id="@+id/ivThumbnail"
@@ -23,7 +24,7 @@
 
         <View
             android:layout_width="match_parent"
-            android:layout_height="32dp"
+            android:layout_height="28dp"
             android:layout_gravity="bottom"
             android:background="@drawable/bg_thumb_gradient" />
 
@@ -32,23 +33,23 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|end"
-            android:layout_margin="5dp"
+            android:layout_margin="4dp"
             android:background="@drawable/bg_thumb_badge"
             android:fontFamily="monospace"
-            android:paddingHorizontal="6dp"
+            android:paddingHorizontal="5dp"
             android:paddingVertical="2dp"
             android:text="00:00"
             android:textColor="#FFFFFF"
-            android:textSize="10sp"
+            android:textSize="9.5sp"
             android:textStyle="bold" />
     </FrameLayout>
 
-    <!-- Clean Centered File Size Pill Only (Zero Title / Zero HD MP4 clutter!) -->
+    <!-- Single-Line Compact MB Pill -->
     <FrameLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
-        android:paddingHorizontal="12dp">
+        android:paddingHorizontal="10dp">
 
         <TextView
             android:id="@+id/tvSizeBadge"
@@ -57,32 +58,33 @@
             android:layout_gravity="center_vertical|start"
             android:background="@drawable/bg_pill_button"
             android:fontFamily="monospace"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="6dp"
+            android:singleLine="true"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
             android:text="0.0 MB"
             android:textColor="@color/cyan_accent"
-            android:textSize="13sp"
+            android:textSize="11.5sp"
             android:textStyle="bold" />
     </FrameLayout>
 
-    <!-- Premium Gradient Play + Glass Share Buttons -->
+    <!-- Compact Sleek Play & Share Buttons -->
     <ImageButton
         android:id="@+id/btnPlayItem"
-        android:layout_width="42dp"
-        android:layout_height="42dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:background="@drawable/bg_primary_gradient_btn"
         android:contentDescription="@string/play"
-        android:padding="10dp"
+        android:padding="8dp"
         android:src="@drawable/ic_play" />
 
     <ImageButton
         android:id="@+id/btnShareItem"
-        android:layout_width="42dp"
-        android:layout_height="42dp"
-        android:layout_marginStart="10dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="8dp"
         android:background="@drawable/bg_circle_icon_btn"
         android:contentDescription="@string/share"
-        android:padding="10dp"
+        android:padding="8dp"
         android:src="@drawable/ic_share" />
 
 </LinearLayout>

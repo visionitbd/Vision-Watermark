@@ -223,6 +223,12 @@ object WatermarkProcessor {
 
             "TO_AUDIO" -> arrayOf("-y", "-i", inputPath, "-vn", "-c:a", "aac", "-b:a", "192k", outputPath)
 
+            "REVERSE_PROXY" -> arrayOf(
+                "-y", "-i", inputPath,
+                "-vf", "scale='min(360,iw)':-2,fps=18,reverse",
+                "-an", "-threads", "0", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+                "-pix_fmt", "yuv420p", outputPath
+            )
             "REVERSE" -> {
                 val safeSpeed = speedFactor.coerceIn(0.5f, 2.0f)
                 val ptsFactor = String.format(Locale.US, "%.4f", 1f / safeSpeed)
